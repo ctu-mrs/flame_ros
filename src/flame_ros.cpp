@@ -2,6 +2,11 @@
 
 namespace flame_ros {
 
-Flame::Flame() : Node("flame node") {}
-
+FlameRos::FlameRos(const rclcpp::NodeOptions & options) : Node("flame", options) {
+    RCLCPP_INFO(get_logger(), "flame_ros constructed");
 }
+
+} // namespace flame_ros
+
+#include <rclcpp_components/register_node_macro.hpp>
+RCLCPP_COMPONENTS_REGISTER_NODE(flame_ros::FlameRos)

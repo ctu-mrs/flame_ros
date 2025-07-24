@@ -15,7 +15,7 @@ set(DEPENDENCIES
   )
 
 set(EXECUTABLES
-  Flame
+  flame_ros
   )
 
 foreach(DEP IN LISTS DEPENDENCIES)
@@ -32,12 +32,17 @@ include_directories(
 
 ## | ----------------------- Flame ROS ---------------------- |
 
-add_executable(Flame
+add_library(${PROJECT_NAME}_component SHARED
   src/flame_ros.cpp
-  src/flame_node.cpp
 )
 
-ament_target_dependencies(Flame
+rclcpp_components_register_node(
+    ${PROJECT_NAME}_component
+    PLUGIN "flame_ros::FlameRos"
+    EXECUTABLE ${PROJECT_NAME}
+)
+
+ament_target_dependencies(${PROJECT_NAME}_component
   ${DEPENDENCIES}
 )
 
@@ -45,8 +50,11 @@ ament_target_dependencies(Flame
 ## |                       install                              |
 ## --------------------------------------------------------------
 
-install(TARGETS ${EXECUTABLES}
-  DESTINATION lib/${PROJECT_NAME}
+install(TARGETS ${PROJECT_NAME}_component
+  EXPORT export_${PROJECT_NAME}
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
 )
 
 install(
@@ -54,21 +62,21 @@ install(
   DESTINATION include/${PROJECT_NAME}
 )
 
-# install(
-#   DIRECTORY launch config
-#   DESTINATION share/${PROJECT_NAME}
-# )
+install(
+  DIRECTORY launch
+  DESTINATION share/${PROJECT_NAME}
+)
 
-# ament_export_include_directories(
-#   include
-#   )
+ament_export_include_directories(
+  include
+)
 
-# ament_export_targets(
-#   export_${PROJECT_NAME} HAS_LIBRARY_TARGET
-#   )
+ament_export_targets(
+  export_${PROJECT_NAME}
+)
 
-# ament_export_dependencies(
-#   ${DEPENDENCIES}
-#   )
+ament_export_dependencies(
+  ${DEPENDENCIES}
+)
 
 ament_package()
