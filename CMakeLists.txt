@@ -1,17 +1,24 @@
 cmake_minimum_required(VERSION 3.8)
 project(flame_ros)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
+find_package(ament_cmake REQUIRED)
+
 set(DEPENDENCIES
   rclcpp
   rclcpp_components
-  ament_cmake
+  image_transport
+  tf2_ros
+  sensor_msgs
+  geometry_msgs
+  #cv_bridge
+  Sophus
   )
 
 set(EXECUTABLES
@@ -22,8 +29,20 @@ foreach(DEP IN LISTS DEPENDENCIES)
   find_package(${DEP} REQUIRED)
 endforeach()
 
+# Handle Eigen3 and OpenCV separately (like in the working example)
+#find_package(Eigen3 REQUIRED)
+pkg_check_modules(EIGEN3 REQUIRED eigen3>=3.2)
+find_package(OpenCV REQUIRED)
+
+set(Sophus_INCLUDE_DIRS /opt/ros/jazzy/include)
+
 include_directories(
   include
+  ${rclcpp_INCLUDE_DIRS}
+  ${OpenCV_INCLUDE_DIRS}
+  ${Sophus_INCLUDE_DIRS}
+  ${EIGEN3_INCLUDE_DIRS}
+  #${cv_bridge_INCLUDE_DIRS}
 )
 
 ## --------------------------------------------------------------
@@ -34,6 +53,7 @@ include_directories(
 
 add_library(${PROJECT_NAME}_component SHARED
   src/flame_ros.cpp
+  src/tracked_image_stream.cpp
 )
 
 rclcpp_components_register_node(
@@ -42,8 +62,15 @@ rclcpp_components_register_node(
     EXECUTABLE ${PROJECT_NAME}
 )
 
+# Apply dependencies to the target
 ament_target_dependencies(${PROJECT_NAME}_component
   ${DEPENDENCIES}
+  Eigen3
+)
+
+# Link OpenCV libraries
+target_link_libraries(${PROJECT_NAME}_component
+  ${OpenCV_LIBRARIES}
 )
 
 ## --------------------------------------------------------------
@@ -77,6 +104,7 @@ ament_export_targets(
 
 ament_export_dependencies(
   ${DEPENDENCIES}
+  Eigen3
 )
 
 ament_package()

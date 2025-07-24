@@ -15,6 +15,15 @@
   <depend>ament_cmake</depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_components</depend>
+  <depend>image_transport</depend>
+  <depend>tf2_ros</depend>
+  <depend>sensor_msgs</depend>
+  <depend>geometry_msgs</depend>
+
+  <depend>eigen3_cmake_module</depend>
+  <build_depend>eigen</build_depend>
+  <!--<depend>cv_bridge</depend>-->
+  <depend>sophus</depend>
 
   <export>
     <build_type>ament_cmake</build_type>
