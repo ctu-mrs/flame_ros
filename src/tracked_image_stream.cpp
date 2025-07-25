@@ -56,7 +56,8 @@ TrackedImageStream::TrackedImageStream(const std::string& world_frame_id,
     tf_buffer_(nh->get_clock()),
     image_transport_(nullptr),
     cam_sub_(),
-    queue_(queue_size) {
+    queue_(queue_size),
+    frame_counter(0) {
   // Double check intrinsics matrix.
   if (K_(0, 0) <= 0) {
     RCLCPP_ERROR(nh_->get_logger(), "Camera intrinsics matrix is probably invalid!\n");
@@ -68,9 +69,11 @@ TrackedImageStream::TrackedImageStream(const std::string& world_frame_id,
   image_transport::ImageTransport it_(nh_);
   image_transport_.reset(new image_transport::ImageTransport(nh_));
 
-  cam_sub_ = image_transport_->subscribeCamera("image", 10,
-                                               &TrackedImageStream::callback,
-                                               this);
+  cam_sub_ = image_transport_->subscribeCamera(std::string("image"), 10,
+                                                [this](const sensor_msgs::msg::Image::ConstSharedPtr& img,
+                                                       const sensor_msgs::msg::CameraInfo::ConstSharedPtr& info) {
+                                                 this->callback(img, info);
+                                             });
 
   // Set up tf.
   tf_listener_.reset(new tf2_ros::TransformListener(tf_buffer_));
@@ -102,8 +105,10 @@ TrackedImageStream::TrackedImageStream(const std::string& world_frame_id,
   image_transport_.reset(new image_transport::ImageTransport(nh_));
 
   cam_sub_ = image_transport_->subscribeCamera("image", 10,
-                                               &TrackedImageStream::callback,
-                                               this);
+                                             std::bind(&TrackedImageStream::callback,
+                                                      this,
+                                                      std::placeholders::_1,
+                                                      std::placeholders::_2));
 
   // Set up tf.
   tf_listener_.reset(new tf2_ros::TransformListener(tf_buffer_));
@@ -111,8 +116,8 @@ TrackedImageStream::TrackedImageStream(const std::string& world_frame_id,
   return;
 }
 
-void TrackedImageStream::callback(const sensor_msgs::msg::Image::ConstPtr& rgb_msg,
-                                  const sensor_msgs::msg::CameraInfo::ConstPtr& info) {
+void TrackedImageStream::callback(const std::shared_ptr<const sensor_msgs::msg::Image>& rgb_msg,
+                                  const std::shared_ptr<const sensor_msgs::msg::CameraInfo>& info) {
   RCLCPP_DEBUG(nh_->get_logger(), "Received image data!");
 
   // Grab rgb data.
@@ -137,7 +142,7 @@ void TrackedImageStream::callback(const sensor_msgs::msg::Image::ConstPtr& rgb_m
     if (!use_external_cal_) {
       for (int ii = 0; ii < 3; ++ii) {
         for (int jj = 0; jj < 3; ++jj) {
-          K_(ii, jj) = info->P[ii*4 + jj];
+          K_(ii, jj) = info->p[ii*4 + jj];
         }
       }
 
@@ -148,7 +153,7 @@ void TrackedImageStream::callback(const sensor_msgs::msg::Image::ConstPtr& rgb_m
       }
 
       for (int ii = 0; ii < 5; ++ii) {
-        D_(ii) = info->D[ii];
+        D_(ii) = info->d[ii];
       }
     }
 
@@ -167,7 +172,7 @@ void TrackedImageStream::callback(const sensor_msgs::msg::Image::ConstPtr& rgb_m
   }
 
   // Get pose of camera.
-  geometry_msgs::TransformStamped tf;
+  geometry_msgs::msg::TransformStamped tf;
   try {
     // Need to remove leading "/" if it exists.
     std::string rgb_frame_id = rgb_msg->header.frame_id;
@@ -176,8 +181,8 @@ void TrackedImageStream::callback(const sensor_msgs::msg::Image::ConstPtr& rgb_m
     }
 
     tf = tf_buffer_.lookupTransform(world_frame_id_, rgb_frame_id,
-                                    ros::Time(rgb_msg->header.stamp),
-                                    ros::Duration(1.0/10));
+                                    rclcpp::Time(rgb_msg->header.stamp),
+                                    rclcpp::Duration(1.0/10, 0));
   } catch (tf2::TransformException &ex) {
     RCLCPP_ERROR(nh_->get_logger(), "%s", ex.what());
     return;
@@ -187,8 +192,8 @@ void TrackedImageStream::callback(const sensor_msgs::msg::Image::ConstPtr& rgb_m
   tfToSophusSE3<float>(tf.transform, &pose);
 
   Frame frame;
-  frame.id = rgb_msg->header.seq;
-  frame.time = rgb_msg->header.stamp.toSec();
+  frame.id = frame_counter++; // header.seq field was dropped in ROS2 implementation, we have to replace it by counter
+  frame.time = rclcpp::Time(rgb_msg->header.stamp).seconds();
   frame.quat = pose.unit_quaternion();
   frame.trans = pose.translation();
   frame.img = rgb;

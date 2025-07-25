@@ -46,6 +46,10 @@
 
 #include <tf2_ros/buffer.h>
 
+#include <rclcpp/time.hpp>
+
+#include <opencv2/calib3d.hpp>
+
 namespace ros_sensor_streams {
 
 /**
@@ -157,8 +161,8 @@ class TrackedImageStream final  {
   }
 
  private:
-  void callback(const sensor_msgs::msg::Image::UniquePtr rgb,
-                const sensor_msgs::msg::CameraInfo::UniquePtr info);
+  void callback(const sensor_msgs::msg::Image::ConstSharedPtr&,
+                const sensor_msgs::msg::CameraInfo::ConstSharedPtr&);
 
   rclcpp::Node::SharedPtr nh_;
 
@@ -184,6 +188,8 @@ class TrackedImageStream final  {
   image_transport::CameraSubscriber cam_sub_;
 
   ThreadSafeQueue<Frame> queue_;
+
+  long unsigned int frame_counter;
 };
 
 }  // namespace ros_sensor_streams

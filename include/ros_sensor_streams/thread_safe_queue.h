@@ -41,7 +41,7 @@ class ThreadSafeQueue {
    * \brief Constructor.
    * @param max_queue_size Maximum queue size.
    */
-  explicit ThreadSafeQueue(int max_queue_size = 8) :
+  explicit ThreadSafeQueue(long unsigned int max_queue_size = 8) :
     max_queue_size(max_queue_size),
     queue(),
     non_empty_(),
@@ -120,7 +120,7 @@ class ThreadSafeQueue {
   }
 
  private:
-  int max_queue_size;
+  long unsigned int max_queue_size;
   std::queue<T> queue;
 
   std::condition_variable_any non_empty_;
