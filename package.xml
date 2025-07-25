@@ -22,7 +22,7 @@
 
   <depend>eigen3_cmake_module</depend>
   <build_depend>eigen</build_depend>
-  <!--<depend>cv_bridge</depend>-->
+  <depend>cv_bridge</depend>
   <depend>sophus</depend>
 
   <export>

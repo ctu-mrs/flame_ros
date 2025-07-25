@@ -17,7 +17,7 @@ set(DEPENDENCIES
   tf2_ros
   sensor_msgs
   geometry_msgs
-  #cv_bridge
+  cv_bridge
   Sophus
   )
 
@@ -42,7 +42,7 @@ include_directories(
   ${OpenCV_INCLUDE_DIRS}
   ${Sophus_INCLUDE_DIRS}
   ${EIGEN3_INCLUDE_DIRS}
-  #${cv_bridge_INCLUDE_DIRS}
+  ${cv_bridge_INCLUDE_DIRS}
 )
 
 ## --------------------------------------------------------------
