@@ -19,11 +19,15 @@
   <depend>tf2_ros</depend>
   <depend>sensor_msgs</depend>
   <depend>geometry_msgs</depend>
+  <depend>cv_bridge</depend>
+  <depend>mrs_lib</depend>
+  <depend>nav_msgs</depend>
+  <depend>pcl_msgs</depend>
 
   <depend>eigen3_cmake_module</depend>
   <build_depend>eigen</build_depend>
-  <depend>cv_bridge</depend>
   <depend>sophus</depend>
+  <depend>flame</depend>
 
   <export>
     <build_type>ament_cmake</build_type>

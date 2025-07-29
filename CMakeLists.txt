@@ -9,6 +9,8 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 endif()
 
 find_package(ament_cmake REQUIRED)
+find_package(flame REQUIRED)
+find_package(Sophus REQUIRED)
 
 set(DEPENDENCIES
   rclcpp
@@ -18,7 +20,9 @@ set(DEPENDENCIES
   sensor_msgs
   geometry_msgs
   cv_bridge
-  Sophus
+  mrs_lib
+  nav_msgs
+  pcl_msgs
   )
 
 set(EXECUTABLES
@@ -43,6 +47,7 @@ include_directories(
   ${Sophus_INCLUDE_DIRS}
   ${EIGEN3_INCLUDE_DIRS}
   ${cv_bridge_INCLUDE_DIRS}
+  ${flame_INCLUDE_DIRS}
 )
 
 ## --------------------------------------------------------------
