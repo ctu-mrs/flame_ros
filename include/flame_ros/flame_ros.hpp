@@ -74,7 +74,7 @@ class FlameRos : public rclcpp::Node
     FlameRos& operator=(FlameRos&& rhs) = delete;
 
   private:
-
+  
     //std::thread thread_;
     //fu::LoadTracker load_;
 

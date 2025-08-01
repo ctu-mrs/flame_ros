@@ -97,12 +97,13 @@ TrackedImageStream::TrackedImageStream(const std::string& world_frame_id,
     D_(5),
     tf_listener_(nullptr),
     tf_buffer_(nh->get_clock()),
-    image_transport_(nullptr),
+    //image_transport_(nullptr),
+    image_transport_(std::make_unique<image_transport::ImageTransport>(nh_)),
     cam_sub_(),
     queue_(queue_size) {
   // Subscribe to topics.
-  image_transport::ImageTransport it_(nh_);
-  image_transport_.reset(new image_transport::ImageTransport(nh_));
+  //mage_transport::ImageTransport it_(nh_);
+  //image_transport_.reset(new image_transport::ImageTransport(nh_));
 
   cam_sub_ = image_transport_->subscribeCamera("image", 10,
                                              std::bind(&TrackedImageStream::callback,

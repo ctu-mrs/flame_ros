@@ -28,99 +28,99 @@ FlameRos::FlameRos(const rclcpp::NodeOptions & options) :
     //tf_listener_ = std::make_shared<tf2_ros::TransformListener>(tf_buffer_);
 
     /*==================== Input Params ====================*/
-    param_loader.loadParam("input/camera_frame_id", camera_frame_id_);
-    param_loader.loadParam("input/camera_world_frame_id", camera_world_frame_id_);
-    param_loader.loadParam("input/subsample_factor", subsample_factor_);
-    param_loader.loadParam("input/poseframe_subsample_factor", poseframe_subsample_factor_);
-    param_loader.loadParam("input/use_poseframe_updates", use_poseframe_updates_);
-    param_loader.loadParam("input/poseframe_child_frame_id", poseframe_child_frame_id_);
-    param_loader.loadParam("input/resize_factor", resize_factor_);
+    param_loader.loadParam("input.camera_frame_id", camera_frame_id_);
+    param_loader.loadParam("input.camera_world_frame_id", camera_world_frame_id_);
+    param_loader.loadParam("input.subsample_factor", subsample_factor_);
+    param_loader.loadParam("input.poseframe_subsample_factor", poseframe_subsample_factor_);
+    param_loader.loadParam("input.use_poseframe_updates", use_poseframe_updates_);
+    param_loader.loadParam("input.poseframe_child_frame_id", poseframe_child_frame_id_);
+    param_loader.loadParam("input.resize_factor", resize_factor_);
 
     /*==================== Output Params ====================*/
-    param_loader.loadParam("output/quiet", params_.debug_quiet);
-    param_loader.loadParam("output/mesh", publish_mesh_);
-    param_loader.loadParam("output/idepthmap", publish_idepthmap_);
-    param_loader.loadParam("output/depthmap", publish_depthmap_);
-    param_loader.loadParam("output/cloud", publish_cloud_);
-    param_loader.loadParam("output/features", publish_features_);
-    param_loader.loadParam("output/stats", publish_stats_);
-    param_loader.loadParam("output/load_integration_factor", load_integration_factor_);
-    param_loader.loadParam("output/scene_color_scale", params_.scene_color_scale);
-    param_loader.loadParam("output/filter_oblique_triangles", params_.do_oblique_triangle_filter);
+    param_loader.loadParam("output.quiet", params_.debug_quiet);
+    param_loader.loadParam("output.mesh", publish_mesh_);
+    param_loader.loadParam("output.idepthmap", publish_idepthmap_);
+    param_loader.loadParam("output.depthmap", publish_depthmap_);
+    param_loader.loadParam("output.cloud", publish_cloud_);
+    param_loader.loadParam("output.features", publish_features_);
+    param_loader.loadParam("output.stats", publish_stats_);
+    param_loader.loadParam("output.load_integration_factor", load_integration_factor_);
+    param_loader.loadParam("output.scene_color_scale", params_.scene_color_scale);
+    param_loader.loadParam("output.filter_oblique_triangles", params_.do_oblique_triangle_filter);
 
     double oblique_normal_thresh;
-    param_loader.loadParam("output/oblique_normal_thresh", oblique_normal_thresh);
+    param_loader.loadParam("output.oblique_normal_thresh", oblique_normal_thresh);
     params_.oblique_normal_thresh = oblique_normal_thresh;
 
-    param_loader.loadParam("output/oblique_idepth_diff_factor", params_.oblique_idepth_diff_factor);
-    param_loader.loadParam("output/oblique_idepth_diff_abs", params_.oblique_idepth_diff_abs);
-    param_loader.loadParam("output/filter_long_edges", params_.do_edge_length_filter);
+    param_loader.loadParam("output.oblique_idepth_diff_factor", params_.oblique_idepth_diff_factor);
+    param_loader.loadParam("output.oblique_idepth_diff_abs", params_.oblique_idepth_diff_abs);
+    param_loader.loadParam("output.filter_long_edges", params_.do_edge_length_filter);
 
     double edge_length_thresh;
-    param_loader.loadParam("output/edge_length_thresh", edge_length_thresh);
+    param_loader.loadParam("output.edge_length_thresh", edge_length_thresh);
     params_.edge_length_thresh = edge_length_thresh;
 
-    param_loader.loadParam("output/filter_triangles_by_idepth", params_.do_idepth_triangle_filter);
+    param_loader.loadParam("output.filter_triangles_by_idepth", params_.do_idepth_triangle_filter);
 
     double min_triangle_idepth;
-    param_loader.loadParam("output/min_triangle_idepth", min_triangle_idepth);
+    param_loader.loadParam("output.min_triangle_idepth", min_triangle_idepth);
     params_.min_triangle_idepth = min_triangle_idepth;
 
-    param_loader.loadParam("output/max_angular_rate", max_angular_rate_);
+    param_loader.loadParam("output.max_angular_rate", max_angular_rate_);
 
     /*==================== Debug Params ====================*/
-    param_loader.loadParam("debug/wireframe", params_.debug_draw_wireframe);
-    param_loader.loadParam("debug/features", params_.debug_draw_features);
-    param_loader.loadParam("debug/detections", params_.debug_draw_detections);
-    param_loader.loadParam("debug/matches", params_.debug_draw_matches);
-    param_loader.loadParam("debug/normals", params_.debug_draw_normals);
-    param_loader.loadParam("debug/idepthmap", params_.debug_draw_idepthmap);
-    param_loader.loadParam("debug/text_overlay", params_.debug_draw_text_overlay);
-    param_loader.loadParam("debug/flip_images", params_.debug_flip_images);
+    param_loader.loadParam("debug.wireframe", params_.debug_draw_wireframe);
+    param_loader.loadParam("debug.features", params_.debug_draw_features);
+    param_loader.loadParam("debug.detections", params_.debug_draw_detections);
+    param_loader.loadParam("debug.matches", params_.debug_draw_matches);
+    param_loader.loadParam("debug.normals", params_.debug_draw_normals);
+    param_loader.loadParam("debug.idepthmap", params_.debug_draw_idepthmap);
+    param_loader.loadParam("debug.text_overlay", params_.debug_draw_text_overlay);
+    param_loader.loadParam("debug.flip_images", params_.debug_flip_images);
 
     /*==================== Threading Params ====================*/
-    param_loader.loadParam("threading/openmp/num_threads", params_.omp_num_threads);
-    param_loader.loadParam("threading/openmp/chunk_size", params_.omp_chunk_size);
+    param_loader.loadParam("threading.openmp.num_threads", params_.omp_num_threads);
+    param_loader.loadParam("threading.openmp.chunk_size", params_.omp_chunk_size);
 
     /*==================== Feature Params ====================*/
-    param_loader.loadParam("features/do_letterbox", params_.do_letterbox);
-    param_loader.loadParam("features/detection/min_grad_mag", params_.min_grad_mag);
+    param_loader.loadParam("features.do_letterbox", params_.do_letterbox);
+    param_loader.loadParam("features.detection.min_grad_mag", params_.min_grad_mag);
     params_.fparams.min_grad_mag = params_.min_grad_mag;
 
     double min_error;
-    param_loader.loadParam("features/detection/min_error", min_error);
+    param_loader.loadParam("features.detection.min_error", min_error);
     params_.min_error = min_error;
 
-    param_loader.loadParam("features/detection/win_size", params_.detection_win_size);
+    param_loader.loadParam("features.detection.win_size", params_.detection_win_size);
 
     int win_size;
-    param_loader.loadParam("features/tracking/win_size", win_size);
+    param_loader.loadParam("features.tracking.win_size", win_size);
     params_.zparams.win_size = win_size;
     params_.fparams.win_size = win_size;
 
-    param_loader.loadParam("features/tracking/max_dropouts", params_.max_dropouts);
+    param_loader.loadParam("features.tracking.max_dropouts", params_.max_dropouts);
 
     double epipolar_line_var;
-    param_loader.loadParam("features/tracking/epipolar_line_var", epipolar_line_var);
+    param_loader.loadParam("features.tracking.epipolar_line_var", epipolar_line_var);
     params_.zparams.epipolar_line_var = epipolar_line_var;
 
     /*==================== Regularization Params ====================*/
-    param_loader.loadParam("regularization/do_nltgv2", params_.do_nltgv2);
-    param_loader.loadParam("regularization/nltgv2/adaptive_data_weights", params_.adaptive_data_weights);
-    param_loader.loadParam("regularization/nltgv2/rescale_data", params_.rescale_data);
-    param_loader.loadParam("regularization/nltgv2/init_with_prediction", params_.init_with_prediction);
-    param_loader.loadParam("regularization/nltgv2/idepth_var_max", params_.idepth_var_max_graph);
-    param_loader.loadParam("regularization/nltgv2/data_factor", params_.rparams.data_factor);
-    param_loader.loadParam("regularization/nltgv2/step_x", params_.rparams.step_x);
-    param_loader.loadParam("regularization/nltgv2/step_q", params_.rparams.step_q);
-    param_loader.loadParam("regularization/nltgv2/theta", params_.rparams.theta);
-    param_loader.loadParam("regularization/nltgv2/min_height", params_.min_height);
-    param_loader.loadParam("regularization/nltgv2/max_height", params_.max_height);
-    param_loader.loadParam("regularization/nltgv2/check_sticky_obstacles", params_.check_sticky_obstacles);
+    param_loader.loadParam("regularization.do_nltgv2", params_.do_nltgv2);
+    param_loader.loadParam("regularization.nltgv2.adaptive_data_weights", params_.adaptive_data_weights);
+    param_loader.loadParam("regularization.nltgv2.rescale_data", params_.rescale_data);
+    param_loader.loadParam("regularization.nltgv2.init_with_prediction", params_.init_with_prediction);
+    param_loader.loadParam("regularization.nltgv2.idepth_var_max", params_.idepth_var_max_graph);
+    param_loader.loadParam("regularization.nltgv2.data_factor", params_.rparams.data_factor);
+    param_loader.loadParam("regularization.nltgv2.step_x", params_.rparams.step_x);
+    param_loader.loadParam("regularization.nltgv2.step_q", params_.rparams.step_q);
+    param_loader.loadParam("regularization.nltgv2.theta", params_.rparams.theta);
+    param_loader.loadParam("regularization.nltgv2.min_height", params_.min_height);
+    param_loader.loadParam("regularization.nltgv2.max_height", params_.max_height);
+    param_loader.loadParam("regularization.nltgv2.check_sticky_obstacles", params_.check_sticky_obstacles);
 
 #ifdef FLAME_WITH_FLA
     bool use_camera_info = false;
-    param_loader.loadParam("input/use_camera_info", &use_camera_info);
+    param_loader.loadParam("input.use_camera_info", &use_camera_info);
 
     if (use_camera_info) {
       // Make sure we don't attempt to resize the image.
@@ -138,8 +138,8 @@ FlameRos::FlameRos(const rclcpp::NodeOptions & options) :
       // refined versions, but this should work for now. Finally, we need to
       // undistort the images.
       int width, height;
-      param_loader.loadParam("/samros/camera/image_width", &width);
-      param_loader.loadParam("/samros/camera/image_height", &height);
+      param_loader.loadParam("samros.camera.image_width", &width);
+      param_loader.loadParam("samros.camera.image_height", &height);
 
       if (((width != 640) && (width != 1280)) ||
           ((height != 512) && (height != 1024))) {
@@ -148,17 +148,17 @@ FlameRos::FlameRos(const rclcpp::NodeOptions & options) :
       }
 
       double fx, fy, cx, cy;
-      param_loader.loadParam("/samros/camera/intrinsics/fu", &fx);
-      param_loader.loadParam("/samros/camera/intrinsics/fv", &fy);
-      param_loader.loadParam("/samros/camera/intrinsics/pu", &cx);
-      param_loader.loadParam("/samros/camera/intrinsics/pv", &cy);
+      param_loader.loadParam("samros.camera.intrinsics.fu", &fx);
+      param_loader.loadParam("samros.camera.intrinsics.fv", &fy);
+      param_loader.loadParam("samros.camera.intrinsics.pu", &cx);
+      param_loader.loadParam("samros.camera.intrinsics.pv", &cy);
 
       double k1, k2, p1, p2, k3;
-      param_loader.loadParam("/samros/camera/distortion/k1", &k1);
-      param_loader.loadParam("/samros/camera/distortion/k2", &k2);
-      param_loader.loadParam("/samros/camera/distortion/p1", &p1);
-      param_loader.loadParam("/samros/camera/distortion/p2", &p2);
-      param_loader.loadParam("/samros/camera/distortion/k3", &k3);
+      param_loader.loadParam("samros.camera.distortion.k1", &k1);
+      param_loader.loadParam("samros.camera.distortion.k2", &k2);
+      param_loader.loadParam("samros.camera.distortion.p1", &p1);
+      param_loader.loadParam("samros.camera.distortion.p2", &p2);
+      param_loader.loadParam("samros.camera.distortion.k3", &k3);
 
       Eigen::VectorXf D(5);
       D << k1, k2, p1, p2, k3;
@@ -183,12 +183,12 @@ FlameRos::FlameRos(const rclcpp::NodeOptions & options) :
 
     // Setup health and status.
     int tmp; // getParam can't handle uint8_t.
-    param_loader.loadParam("fla/node_id", &tmp);
+    param_loader.loadParam("fla.node_id", &tmp);
     node_id_ = tmp;
 
-    param_loader.loadParam("fla/heart_beat_dt", &heart_beat_dt_);
-    param_loader.loadParam("fla/alarm_timeout", &alarm_timeout_);
-    param_loader.loadParam("fla/fail_timeout", &fail_timeout_);
+    param_loader.loadParam("fla.heart_beat_dt", &heart_beat_dt_);
+    param_loader.loadParam("fla.alarm_timeout", &alarm_timeout_);
+    param_loader.loadParam("fla.fail_timeout", &fail_timeout_);
 
     heart_beat_ = nh.createTimer(rclcpp::Duration(heart_beat_dt_, 0),
                                  &FlameNodelet::heartBeat, this);
@@ -251,22 +251,22 @@ FlameRos::FlameRos(const rclcpp::NodeOptions & options) :
     }
 
     if (params_.debug_draw_wireframe) {
-      debug_wireframe_pub_ = it_->advertise("debug/wireframe", 1);
+      debug_wireframe_pub_ = it_->advertise("debug.wireframe", 1);
     }
     if (params_.debug_draw_features) {
-      debug_features_pub_ = it_->advertise("debug/features", 1);
+      debug_features_pub_ = it_->advertise("debug.features", 1);
     }
     if (params_.debug_draw_detections) {
-      debug_detections_pub_ = it_->advertise("debug/detections", 1);
+      debug_detections_pub_ = it_->advertise("debug.detections", 1);
     }
     if (params_.debug_draw_matches) {
-      debug_matches_pub_ = it_->advertise("debug/matches", 1);
+      debug_matches_pub_ = it_->advertise("debug.matches", 1);
     }
     if (params_.debug_draw_normals) {
-      debug_normals_pub_ = it_->advertise("debug/normals", 1);
+      debug_normals_pub_ = it_->advertise("debug.normals", 1);
     }
     if (params_.debug_draw_idepthmap) {
-      debug_idepthmap_pub_ = it_->advertise("debug/idepthmap", 1);
+      debug_idepthmap_pub_ = it_->advertise("debug.idepthmap", 1);
     }
 
     // Kick off main thread.
