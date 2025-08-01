@@ -4,13 +4,21 @@
 
 namespace flame_ros {
 
-FlameRos::FlameRos(const rclcpp::NodeOptions & options) : rclcpp::Node(NODE_NAME, options) {
+FlameRos::FlameRos(const rclcpp::NodeOptions & options) : 
+  rclcpp::Node(NODE_NAME, options),
+  tf_buffer_(get_clock()),
+  pose_frame_id(0)
+  {
     // std::signal(SIGSEGV, crash_handler);
     // std::signal(SIGILL, crash_handler);
     // std::signal(SIGABRT, crash_handler);
     // std::signal(SIGFPE, crash_handler);
 
+    RCLCPP_INFO(get_logger(), "=========== 1");
+
     mrs_lib::ParamLoader param_loader(shared_from_this(), NODE_NAME);
+
+    RCLCPP_INFO(get_logger(), "=========== 2");
 
     load_ = std::move(fu::LoadTracker(getpid()));
 
@@ -135,7 +143,7 @@ FlameRos::FlameRos(const rclcpp::NodeOptions & options) : rclcpp::Node(NODE_NAME
 
       if (((width != 640) && (width != 1280)) ||
           ((height != 512) && (height != 1024))) {
-        ROS_ERROR("FlameNodelet: Unexpected image size = (%i, % i)\n",
+        RCLCPP_ERROR(get_logger(), "FlameNodelet: Unexpected image size = (%i, % i)\n",
                   width, height);
       }
 
@@ -182,7 +190,7 @@ FlameRos::FlameRos(const rclcpp::NodeOptions & options) : rclcpp::Node(NODE_NAME
     param_loader.loadParam("fla/alarm_timeout", &alarm_timeout_);
     param_loader.loadParam("fla/fail_timeout", &fail_timeout_);
 
-    heart_beat_ = nh.createTimer(ros::Duration(heart_beat_dt_),
+    heart_beat_ = nh.createTimer(rclcpp::Duration(heart_beat_dt_, 0),
                                  &FlameNodelet::heartBeat, this);
     heart_beat_pub_ = nh.advertise<fla_msgs::ProcessStatus>("/globalstatus", 1);
 #else
@@ -206,11 +214,11 @@ FlameRos::FlameRos(const rclcpp::NodeOptions & options) : rclcpp::Node(NODE_NAME
         //                              &FlameNodelet::poseframeCallback, this);
         mrs_lib::SubscriberHandlerOptions shopts(shared_from_this());
         shopts.node_name = NODE_NAME;
+        shopts.topic_name = "poseframes";
         //shopts.no_message_timeout = no_message_timeout;
         poseframe_sub_ = mrs_lib::SubscriberHandler<nav_msgs::msg::Path>(
             shopts,
-            "poseframes",
-            &FlameRos::poseframeCallback
+            std::bind(&FlameRos::poseframeCallback, this, std::placeholders::_1)
         );
     }
 
@@ -235,12 +243,12 @@ FlameRos::FlameRos(const rclcpp::NodeOptions & options) : rclcpp::Node(NODE_NAME
       //cloud_pub_ = nh.advertise<sensor_msgs::PointCloud2>("cloud", 5);
       cloud_pub_ = mrs_lib::PublisherHandler<sensor_msgs::msg::PointCloud2>(shared_from_this(), "cloud");
     }
-    // if (publish_stats_) {
-    //   //stats_pub_ = nh.advertise<FlameStats>("stats", 5);
-    //   stats_pub_ = mrs_lib::PublisherHandler<FlameStats>(shared_from_this(), "stats");
-    //   //nodelet_stats_pub_ = nh.advertise<FlameNodeletStats>("nodelet_stats", 5);
-    //   nodelet_stats_pub_ = mrs_lib::PublisherHandler<FlameNodeletStats>(shared_from_this(), "nodelet_stats");
-    // }
+    if (publish_stats_) {
+      //stats_pub_ = nh.advertise<FlameStats>("stats", 5);
+      stats_pub_ = mrs_lib::PublisherHandler<flame_ros_msgs::msg::FlameStats>(shared_from_this(), "stats");
+      //nodelet_stats_pub_ = nh.advertise<FlameNodeletStats>("nodelet_stats", 5);
+      nodelet_stats_pub_ = mrs_lib::PublisherHandler<flame_ros_msgs::msg::FlameNodeletStats>(shared_from_this(), "nodelet_stats");
+    }
 
     if (params_.debug_draw_wireframe) {
       debug_wireframe_pub_ = it_->advertise("debug/wireframe", 1);
@@ -270,11 +278,12 @@ FlameRos::FlameRos(const rclcpp::NodeOptions & options) : rclcpp::Node(NODE_NAME
   /**
    * @brief Callback for receiving poseframe poses.
    */
-void FlameRos::poseframeCallback(const nav_msgs::msg::Path::ConstSharedPtr& msg) {
+void FlameRos::poseframeCallback(const nav_msgs::msg::Path::ConstSharedPtr msg) {
+    pose_frame_id++;
     if(!params_.debug_quiet) RCLCPP_INFO(get_logger(), "FlameNodelet: Got a poseframe message!\n");
 
     // Get transform to camera_world.
-    geometry_msgs::TransformStamped tf;
+    geometry_msgs::msg::TransformStamped tf;
     try {
       // Need to remove leading "/" if it exists.
       std::string frame_id = msg->header.frame_id;
@@ -282,10 +291,10 @@ void FlameRos::poseframeCallback(const nav_msgs::msg::Path::ConstSharedPtr& msg)
         frame_id = frame_id.substr(1, frame_id.size()-1);
       }
       tf = tf_buffer_.lookupTransform(camera_world_frame_id_, frame_id,
-                                      ros::Time(msg->header.stamp),
-                                      ros::Duration(1.0/15));
+                                      rclcpp::Time(msg->header.stamp),
+                                      rclcpp::Duration(1.0/15, 0));
     } catch (tf2::TransformException &ex) {
-      ROS_ERROR("%s", ex.what());
+      RCLCPP_ERROR(get_logger(), "%s", ex.what());
       return;
     }
 
@@ -300,10 +309,10 @@ void FlameRos::poseframeCallback(const nav_msgs::msg::Path::ConstSharedPtr& msg)
         frame_id = frame_id.substr(1, frame_id.size()-1);
       }
       tf = tf_buffer_.lookupTransform(poseframe_child_frame_id_, camera_frame_id_,
-                                      ros::Time(msg->header.stamp),
-                                      ros::Duration(1.0/15));
+                                      rclcpp::Time(msg->header.stamp),
+                                      rclcpp::Duration(1.0/15, 0));
     } catch (tf2::TransformException &ex) {
-      ROS_ERROR("%s", ex.what());
+      RCLCPP_ERROR(get_logger(), "%s", ex.what());
       return;
     }
 
@@ -313,8 +322,8 @@ void FlameRos::poseframeCallback(const nav_msgs::msg::Path::ConstSharedPtr& msg)
     // Extract ids and poses.
     std::vector<uint32_t> pf_ids(msg->poses.size());
     std::vector<Sophus::SE3f> pf_poses(msg->poses.size());
-    for (int ii = 0; ii < msg->poses.size(); ++ii) {
-      pf_ids[ii] = msg->poses[ii].header.seq;
+    for (long unsigned int ii = 0; ii < msg->poses.size(); ++ii) {
+      pf_ids[ii] = pose_frame_id;
 
       Sophus::SE3f pose;
       ros_sensor_streams::poseToSophusSE3<float>(msg->poses[ii].pose, &pose);
@@ -336,10 +345,212 @@ void FlameRos::poseframeCallback(const nav_msgs::msg::Path::ConstSharedPtr& msg)
     return;
 }
 
+void FlameRos::processFrame(const uint32_t img_id, const double time,
+                  const Sophus::SE3f& pose, const cv::Mat3b& rgb) {
+  stats_.tick("process_frame");
+
+  /*==================== Process image ====================*/
+  // Convert to grayscale.
+  cv::Mat1b img_gray;
+  cv::cvtColor(rgb, img_gray, cv::COLOR_RGB2GRAY);
+
+  bool is_poseframe = ((static_cast<int>(img_id) -  first_pf_id_) %
+                        poseframe_subsample_factor_) == 0;
+  bool update_success = sensor_->update(time, img_id, pose, img_gray,
+                                        is_poseframe);
+
+  if (!update_success) {
+    stats_.tock("process_frame");
+    if(!params_.debug_quiet) RCLCPP_WARN(get_logger(), "FlameNodelet: Unsuccessful update.\n");
+    return;
+  }
+
+  if (max_angular_rate_ > 0.0f) {
+    // Check angle difference between last and current pose. If we're rotating,
+    // we shouldn't publish output since it's probably too noisy.
+    Eigen::Quaternionf q_delta = pose.unit_quaternion() *
+        prev_pose_.unit_quaternion().inverse();
+    float angle_delta = fu::fast_abs(Eigen::AngleAxisf(q_delta).angle());
+    float angle_rate = angle_delta / (time - prev_time_);
+
+    prev_time_ = time;
+    prev_pose_ = pose;
+
+    if (angle_rate * 180.0f / M_PI > max_angular_rate_) {
+      // Angular rate is too high.
+      if(!params_.debug_quiet) RCLCPP_ERROR(get_logger(),
+                      "Angle Delta = %.3f, rate = %f.3\n", angle_delta * 180.0f / M_PI,
+                      angle_rate * 180.0f / M_PI);
+      return;
+    }
+  }
+
+  /*==================== Publish output ====================*/
+  stats_.tick("publishing");
+
+  if (publish_mesh_) {
+    // Get current mesh.
+    std::vector<cv::Point2f> vtx;
+    std::vector<float> idepths;
+    std::vector<Eigen::Vector3f> normals;
+    std::vector<flame::Triangle> triangles;
+    std::vector<flame::Edge> edges;
+    std::vector<bool> tri_validity;
+    sensor_->getInverseDepthMesh(&vtx, &idepths, &normals, &triangles,
+                                  &tri_validity, &edges);
+    publishDepthMesh(mesh_pub_, camera_frame_id_, time, Kinv_, vtx,
+                      idepths, normals, triangles, tri_validity, rgb);
+  }
+
+  if (publish_idepthmap_ || publish_depthmap_ || publish_cloud_) {
+    cv::Mat1f idepthmap;
+    sensor_->getFilteredInverseDepthMap(&idepthmap);
+
+    if (publish_idepthmap_) {
+      // Publish full idepthmap.
+      publishDepthMap(idepth_pub_, camera_frame_id_, time, input_->K(),
+                      sensor_->getInverseDepthMap());
+    }
+
+    // Convert to depths.
+    cv::Mat1f depth_est(idepthmap.rows, idepthmap.cols,
+                        std::numeric_limits<float>::quiet_NaN());
+#pragma omp parallel for collapse(2) num_threads(params_.omp_num_threads) schedule(dynamic, params_.omp_chunk_size) // NOLINT
+    for (int ii = 0; ii < depth_est.rows; ++ii) {
+      for (int jj = 0; jj < depth_est.cols; ++jj) {
+        float idepth =  idepthmap(ii, jj);
+        if (!std::isnan(idepth) && (idepth > 0)) {
+          depth_est(ii, jj) = 1.0f/ idepth;
+        }
+      }
+    }
+
+    if (publish_depthmap_) {
+      publishDepthMap(depth_pub_, input_->live_frame_id(), time, input_->K(),
+                      depth_est);
+    }
+
+    if (publish_cloud_) {
+      float max_depth = (params_.do_idepth_triangle_filter) ?
+          1.0f / params_.min_triangle_idepth : std::numeric_limits<float>::max();
+      publishPointCloud(cloud_pub_, input_->live_frame_id(), time, input_->K(),
+                        depth_est, 0.1f, max_depth);
+    }
+  }
+
+  if (publish_features_) {
+    cv::Mat1f depth_raw(img_gray.rows, img_gray.cols,
+                        std::numeric_limits<float>::quiet_NaN());
+    if (publish_features_) {
+      std::vector<cv::Point2f> vertices;
+      std::vector<float> idepths_mu, idepths_var;
+      sensor_->getRawIDepths(&vertices, &idepths_mu, &idepths_var);
+
+      for (long unsigned int ii = 0; ii < vertices.size(); ++ii) {
+        float id = idepths_mu[ii];
+        // unused: float var = idepths_var[ii];
+        if (!std::isnan(id) && (id > 0)) {
+          int x = fu::fast_roundf(vertices[ii].x);
+          int y = fu::fast_roundf(vertices[ii].y);
+
+          FLAME_ASSERT(x >= 0);
+          FLAME_ASSERT(x < depth_raw.cols);
+          FLAME_ASSERT(y >= 0);
+          FLAME_ASSERT(y < depth_raw.rows);
+
+          depth_raw(y, x) = 1.0f / id;
+        }
+      }
+    }
+
+    publishDepthMap(features_pub_, input_->live_frame_id(), time, input_->K(),
+                    depth_raw);
+  }
+
+  if (publish_stats_) {
+    auto stats = sensor_->stats().stats();
+    auto timings = sensor_->stats().timings();
+    publishFlameStats(stats_pub_, img_id, time, stats, timings);
+  }
+
+  stats_.set("latency", (get_clock()->now().seconds() - time) * 1000);
+  if(!params_.debug_quiet) RCLCPP_INFO(get_logger(),
+                    "FlameNodelet/latency = %4.1fms\n",
+                    stats_.stats("latency"));
+
+  stats_.tock("publishing");
+  if(!params_.debug_quiet) RCLCPP_INFO(get_logger(),
+                    "FlameNodelet/publishing = %4.1fms\n",
+                    stats_.timings("publishing"));
+
+  /*==================== Publish debug stuff ====================*/
+  stats_.tick("debug_publishing");
+
+  std_msgs::msg::Header hdr;
+  hdr.stamp.sec = time;
+  hdr.stamp.nanosec = 0;
+  hdr.frame_id = input_->live_frame_id();
+
+  if (params_.debug_draw_wireframe) {
+    sensor_msgs::msg::Image::ConstSharedPtr debug_img_msg =
+        cv_bridge::CvImage(hdr, "bgr8",
+                            sensor_->getDebugImageWireframe()).toImageMsg();
+    debug_wireframe_pub_.publish(debug_img_msg);
+  }
+
+  if (params_.debug_draw_features) {
+    sensor_msgs::msg::Image::ConstSharedPtr debug_img_msg =
+        cv_bridge::CvImage(hdr, "bgr8",
+                            sensor_->getDebugImageFeatures()).toImageMsg();
+    debug_features_pub_.publish(debug_img_msg);
+  }
+
+  if (params_.debug_draw_detections) {
+    sensor_msgs::msg::Image::ConstSharedPtr debug_img_msg =
+        cv_bridge::CvImage(hdr, "bgr8",
+                            sensor_->getDebugImageDetections()).toImageMsg();
+    debug_detections_pub_.publish(debug_img_msg);
+  }
+
+  if (params_.debug_draw_matches) {
+    sensor_msgs::msg::Image::ConstSharedPtr debug_img_msg =
+        cv_bridge::CvImage(hdr, "bgr8",
+                            sensor_->getDebugImageMatches()).toImageMsg();
+    debug_matches_pub_.publish(debug_img_msg);
+  }
+
+  if (params_.debug_draw_normals) {
+    sensor_msgs::msg::Image::ConstSharedPtr debug_img_msg =
+        cv_bridge::CvImage(hdr, "bgr8",
+                            sensor_->getDebugImageNormals()).toImageMsg();
+    debug_normals_pub_.publish(debug_img_msg);
+  }
+
+  if (params_.debug_draw_idepthmap) {
+    sensor_msgs::msg::Image::ConstSharedPtr debug_img_msg =
+        cv_bridge::CvImage(hdr, "bgr8",
+                            sensor_->getDebugImageInverseDepthMap()).toImageMsg();
+    debug_idepthmap_pub_.publish(debug_img_msg);
+  }
+
+  stats_.tock("debug_publishing");
+  if(!params_.debug_quiet) RCLCPP_INFO(get_logger(),
+                    "FlameNodelet/debug_publishing = %4.1fms\n",
+                    stats_.timings("debug_publishing"));
+
+  stats_.tock("process_frame");
+
+  if(!params_.debug_quiet) RCLCPP_INFO(get_logger(),
+                    "FlameNodelet/process_frame = %4.1fms\n",
+                    stats_.timings("process_frame"));
+
+  return;
+}
+
   /**
    * \brief Main processing loop.
    */
-void main() {
+void FlameRos::main() {
     // Wait until input is initialized.
     if(!params_.debug_quiet) RCLCPP_INFO(get_logger(), "FlameNodelet: Waiting on calibration...\n");
 
@@ -360,7 +571,7 @@ void main() {
     /*==================== Enter main loop ====================*/
     if(!params_.debug_quiet) RCLCPP_INFO(get_logger(), "FlameNodelet: Done. We are GO for launch!\n");
     
-    while (ros::ok()) {
+    while (rclcpp::ok()) {
       stats_.tick("main");
 
       // Wait for queue to have items.
@@ -372,10 +583,10 @@ void main() {
         });
       lock.unlock();
       stats_.tock("waiting");
-      NODELET_INFO_COND(!params_.debug_quiet,
-                        "FlameNodelet/waiting = %4.1fms, queue_size = %i\n",
-                        stats_.timings("waiting"),
-                        static_cast<int>(stats_.stats("queue_size")));
+      if(!params_.debug_quiet) RCLCPP_INFO(get_logger(),
+          "FlameNodelet/waiting = %4.1fms, queue_size = %i\n",
+          stats_.timings("waiting"),
+          static_cast<int>(stats_.stats("queue_size")));
 
       // Grab the first item in the queue.
       Frame frame = input_->queue().front();
@@ -415,7 +626,7 @@ void main() {
       stats_.tick("fps");
 
 #ifdef FLAME_WITH_FLA
-      last_update_sec_ = ros::Time::now().toSec();
+      last_update_sec_ = get_clock()->now().seconds();
 #endif
 
       stats_.tock("main");
@@ -436,14 +647,14 @@ void main() {
         stats_.set("pid", getpid());
       }
 
-      publishFlameNodeletStats(nodelet_stats_pub_,
-                               frame.id, frame.time,
-                               stats_.stats(), stats_.timings());
+      // publishFlameNodeletStats(nodelet_stats_pub_,
+      //                          frame.id, frame.time,
+      //                          stats_.stats(), stats_.timings());
 
-      NODELET_INFO_COND(!params_.debug_quiet,
-                        "FlameNodelet/main(%i/%u) = %4.1fms/%.1fHz (%.1fHz)\n",
-                        num_imgs_, frame.id, stats_.timings("main"),
-                        stats_.stats("fps_max"), stats_.stats("fps"));
+      if(!params_.debug_quiet) RCLCPP_INFO(get_logger(),
+        "FlameNodelet/main(%i/%u) = %4.1fms/%.1fHz (%.1fHz)\n",
+        num_imgs_, frame.id, stats_.timings("main"),
+        stats_.stats("fps_max"), stats_.stats("fps"));
 
       num_imgs_++;
     }

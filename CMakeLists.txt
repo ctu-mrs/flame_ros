@@ -11,6 +11,7 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(flame REQUIRED)
 find_package(Sophus REQUIRED)
+find_package(PCL REQUIRED)
 
 set(DEPENDENCIES
   rclcpp
@@ -23,6 +24,8 @@ set(DEPENDENCIES
   mrs_lib
   nav_msgs
   pcl_msgs
+  pcl_conversions
+  flame_ros_msgs
   )
 
 set(EXECUTABLES
@@ -48,6 +51,7 @@ include_directories(
   ${EIGEN3_INCLUDE_DIRS}
   ${cv_bridge_INCLUDE_DIRS}
   ${flame_INCLUDE_DIRS}
+  ${PCL_INCLUDE_DIRS}
 )
 
 ## --------------------------------------------------------------
@@ -59,6 +63,7 @@ include_directories(
 add_library(${PROJECT_NAME}_component SHARED
   src/flame_ros.cpp
   src/tracked_image_stream.cpp
+  src/utils.cpp
 )
 
 rclcpp_components_register_node(

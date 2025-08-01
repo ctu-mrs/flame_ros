@@ -6,6 +6,7 @@
 #include <mrs_lib/publisher_handler.h>
 
 #include <ros_sensor_streams/tracked_image_stream.h>
+#include <ros_sensor_streams/conversions.h>
 
 #include <flame/utils/image_utils.h>
 #include <flame/utils/stats_tracker.h>
@@ -17,8 +18,11 @@
 #include <nav_msgs/msg/path.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <pcl_msgs/msg/polygon_mesh.hpp>
+#include <geometry_msgs/msg/transform_stamped.hpp>
 
-//#include <ros_sensor_streams/header2.hpp>
+#include <cv_bridge/cv_bridge.hpp>
+
+#include <flame_ros/utils.hpp>
 
 namespace fu = flame::utils;
 
@@ -33,7 +37,9 @@ class FlameRos : public rclcpp::Node
 {
   public:
     FlameRos(const rclcpp::NodeOptions & options);
-    void poseframeCallback(const nav_msgs::msg::Path::ConstSharedPtr& msg);
+    void poseframeCallback(const nav_msgs::msg::Path::ConstSharedPtr msg);
+    void processFrame(const uint32_t img_id, const double time, const Sophus::SE3f& pose, const cv::Mat3b& rgb);
+    void main();
 
     // // Convenience alias.
     using Frame = ros_sensor_streams::TrackedImageStream::Frame;
@@ -83,7 +89,7 @@ class FlameRos : public rclcpp::Node
 
     // tf stuff.
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
-    ////tf2_ros::Buffer tf_buffer_;
+    tf2_ros::Buffer tf_buffer_;
 
     // input params.
     std::string camera_frame_id_; // Frame id of the camera in optical coordinates.
@@ -135,10 +141,8 @@ class FlameRos : public rclcpp::Node
 
     // Publishes statistics.
     bool publish_stats_;
-    ////ros::Publisher stats_pub_;
-    //mrs_lib::PublisherHandler<FlameStats> stats_pub_;
-    ////ros::Publisher nodelet_stats_pub_;
-    //mrs_lib::PublisherHandler<FlameNodeletStats> nodelet_stats_pub_;
+    mrs_lib::PublisherHandler<flame_ros_msgs::msg::FlameStats> stats_pub_;
+    mrs_lib::PublisherHandler<flame_ros_msgs::msg::FlameNodeletStats> nodelet_stats_pub_;
     int load_integration_factor_;
 
     // Publishes debug images.
@@ -158,6 +162,10 @@ class FlameRos : public rclcpp::Node
     ros::Publisher heart_beat_pub_;
     double last_update_sec_;
   #endif
+
+    // Messages in the ROS2 does not have "seq" field in the header.
+    // We have to replace it by the counter in the subscriber.
+    unsigned long int pose_frame_id;
 };
 
 } // namespace flame_ros
