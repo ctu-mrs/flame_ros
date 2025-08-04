@@ -19,11 +19,7 @@ void FlameRos::timerInitialization() {
   // std::signal(SIGABRT, crash_handler);
   // std::signal(SIGFPE, crash_handler);
 
-  RCLCPP_INFO(get_logger(), "=========== 1");
-
   mrs_lib::ParamLoader param_loader(shared_from_this(), NODE_NAME);
-
-  RCLCPP_INFO(get_logger(), "=========== 2");
 
   load_ = std::move(fu::LoadTracker(getpid()));
 
@@ -148,7 +144,7 @@ void FlameRos::timerInitialization() {
 
     if (((width != 640) && (width != 1280)) ||
         ((height != 512) && (height != 1024))) {
-      RCLCPP_ERROR(get_logger(), "FlameNodelet: Unexpected image size = (%i, % i)\n",
+      RCLCPP_ERROR(get_logger(), "FlameRos: Unexpected image size = (%i, % i)\n",
                 width, height);
     }
 
@@ -196,7 +192,7 @@ void FlameRos::timerInitialization() {
   param_loader.loadParam("fla.fail_timeout", &fail_timeout_);
 
   heart_beat_ = nh.createTimer(rclcpp::Duration(heart_beat_dt_, 0),
-                                &FlameNodelet::heartBeat, this);
+                                &FlameRos::heartBeat, this);
   heart_beat_pub_ = nh.advertise<fla_msgs::ProcessStatus>("/globalstatus", 1);
 #else
   // Image resizing not supported for non-FLA.
@@ -216,19 +212,22 @@ void FlameRos::timerInitialization() {
 
       // Subscribe to poseframe topic.
       //poseframe_sub_ = nh.subscribe("poseframes", 1,
-      //                              &FlameNodelet::poseframeCallback, this);
-      mrs_lib::SubscriberHandlerOptions shopts(shared_from_this());
-      shopts.node_name = NODE_NAME;
-      shopts.topic_name = "poseframes";
+      //                              &FlameRos::poseframeCallback, this);
+      // mrs_lib::SubscriberHandlerOptions shopts(shared_from_this());
+      // shopts.node_name = NODE_NAME;
+      // shopts.topic_name = "pathimu";
       //shopts.no_message_timeout = no_message_timeout;
-      poseframe_sub_ = mrs_lib::SubscriberHandler<nav_msgs::msg::Path>(
-          shopts,
-          std::bind(&FlameRos::poseframeCallback, this, std::placeholders::_1)
-      );
+      // poseframe_sub_ = mrs_lib::SubscriberHandler<nav_msgs::msg::Path>(
+      //     shopts,
+      //     std::bind(&FlameRos::poseframeCallback, this, std::placeholders::_1)
+      // );
+
+      poseframe_sub_ = create_subscription<nav_msgs::msg::Path>(
+        "pathimu", 10, std::bind(&FlameRos::poseframeCallback, this, std::placeholders::_1));
   }
 
   // Set up publishers. For some reason this appears to take a while.
-  if(!params_.debug_quiet) RCLCPP_INFO(get_logger(), "FlameNodelet: Setting up publishers...\n");
+  if(!params_.debug_quiet) RCLCPP_INFO(get_logger(), "FlameRos: Setting up publishers...\n");
 
   it_ = std::make_shared<image_transport::ImageTransport>(shared_from_this());
 
@@ -290,7 +289,7 @@ void FlameRos::poseframeCallback(const nav_msgs::msg::Path::ConstSharedPtr msg) 
     CHECK_INIT
 
     pose_frame_id++;
-    if(!params_.debug_quiet) RCLCPP_INFO(get_logger(), "FlameNodelet: Got a poseframe message!\n");
+    if(!params_.debug_quiet) RCLCPP_INFO(get_logger(), "FlameRos: Got a poseframe message!\n");
 
     // Get transform to camera_world.
     geometry_msgs::msg::TransformStamped tf;
@@ -364,6 +363,8 @@ void FlameRos::processFrame(const uint32_t img_id, const double time,
   cv::Mat1b img_gray;
   cv::cvtColor(rgb, img_gray, cv::COLOR_RGB2GRAY);
 
+  RCLCPP_INFO(get_logger(), "ING ID: %d", img_id);
+
   bool is_poseframe = ((static_cast<int>(img_id) -  first_pf_id_) %
                         poseframe_subsample_factor_) == 0;
   bool update_success = sensor_->update(time, img_id, pose, img_gray,
@@ -371,7 +372,7 @@ void FlameRos::processFrame(const uint32_t img_id, const double time,
 
   if (!update_success) {
     stats_.tock("process_frame");
-    if(!params_.debug_quiet) RCLCPP_WARN(get_logger(), "FlameNodelet: Unsuccessful update.\n");
+    if(!params_.debug_quiet) RCLCPP_WARN(get_logger(), "FlameRos: Unsuccessful update.\n");
     return;
   }
 
@@ -485,12 +486,12 @@ void FlameRos::processFrame(const uint32_t img_id, const double time,
 
   stats_.set("latency", (get_clock()->now().seconds() - time) * 1000);
   if(!params_.debug_quiet) RCLCPP_INFO(get_logger(),
-                    "FlameNodelet/latency = %4.1fms\n",
+                    "FlameRos/latency = %4.1fms\n",
                     stats_.stats("latency"));
 
   stats_.tock("publishing");
   if(!params_.debug_quiet) RCLCPP_INFO(get_logger(),
-                    "FlameNodelet/publishing = %4.1fms\n",
+                    "FlameRos/publishing = %4.1fms\n",
                     stats_.timings("publishing"));
 
   /*==================== Publish debug stuff ====================*/
@@ -545,13 +546,13 @@ void FlameRos::processFrame(const uint32_t img_id, const double time,
 
   stats_.tock("debug_publishing");
   if(!params_.debug_quiet) RCLCPP_INFO(get_logger(),
-                    "FlameNodelet/debug_publishing = %4.1fms\n",
+                    "FlameRos/debug_publishing = %4.1fms\n",
                     stats_.timings("debug_publishing"));
 
   stats_.tock("process_frame");
 
   if(!params_.debug_quiet) RCLCPP_INFO(get_logger(),
-                    "FlameNodelet/process_frame = %4.1fms\n",
+                    "FlameRos/process_frame = %4.1fms\n",
                     stats_.timings("process_frame"));
 
   return;
@@ -562,7 +563,7 @@ void FlameRos::processFrame(const uint32_t img_id, const double time,
    */
 void FlameRos::main() {
     // Wait until input is initialized.
-    if(!params_.debug_quiet) RCLCPP_INFO(get_logger(), "FlameNodelet: Waiting for calibration...\n");
+    if(!params_.debug_quiet) RCLCPP_INFO(get_logger(), "FlameRos: Waiting for calibration...\n");
 
     while (!input_->inited()) {
       std::this_thread::yield();
@@ -571,7 +572,7 @@ void FlameRos::main() {
     Kinv_ = input_->K().inverse();
 
     // Initialize depth sensor.
-    if(!params_.debug_quiet) RCLCPP_INFO(get_logger(), "FlameNodelet: Constructing Flame...\n");
+    if(!params_.debug_quiet) RCLCPP_INFO(get_logger(), "FlameRos: Constructing Flame...\n");
     sensor_ = std::make_shared<flame::Flame>(input_->width(),
                                              input_->height(),
                                              input_->K(),
@@ -579,8 +580,10 @@ void FlameRos::main() {
                                              params_);
 
     /*==================== Enter main loop ====================*/
-    if(!params_.debug_quiet) RCLCPP_INFO(get_logger(), "FlameNodelet: Done. We are GO for launch!\n");
+    if(!params_.debug_quiet) RCLCPP_INFO(get_logger(), "FlameRos: Done. We are GO for launch!\n");
     
+    unsigned int frame_count = 0;
+
     while (rclcpp::ok()) {
       stats_.tick("main");
 
@@ -594,7 +597,7 @@ void FlameRos::main() {
       lock.unlock();
       stats_.tock("waiting");
       if(!params_.debug_quiet) RCLCPP_INFO(get_logger(),
-          "FlameNodelet/waiting = %4.1fms, queue_size = %i\n",
+          "FlameRos/waiting = %4.1fms, queue_size = %i\n",
           stats_.timings("waiting"),
           static_cast<int>(stats_.stats("queue_size")));
 
@@ -603,7 +606,9 @@ void FlameRos::main() {
       input_->queue().pop();
       if ((pfs_inited_) && (num_imgs_ % subsample_factor_ == 0)) {
         // Eat data.
-        processFrame(frame.id, frame.time, Sophus::SE3f(frame.quat, frame.trans),
+        // processFrame(frame.id, frame.time, Sophus::SE3f(frame.quat, frame.trans),
+        //              frame.img);
+        processFrame(frame_count++, frame.time, Sophus::SE3f(frame.quat, frame.trans),
                      frame.img);
       }
 
@@ -662,7 +667,7 @@ void FlameRos::main() {
       //                          stats_.stats(), stats_.timings());
 
       if(!params_.debug_quiet) RCLCPP_INFO(get_logger(),
-        "FlameNodelet/main(%i/%u) = %4.1fms/%.1fHz (%.1fHz)\n",
+        "FlameRos/main(%i/%u) = %4.1fms/%.1fHz (%.1fHz)\n",
         num_imgs_, frame.id, stats_.timings("main"),
         stats_.stats("fps_max"), stats_.stats("fps"));
 

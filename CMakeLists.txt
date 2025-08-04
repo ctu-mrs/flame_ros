@@ -38,7 +38,8 @@ endforeach()
 
 # Handle Eigen3 and OpenCV separately (like in the working example)
 #find_package(Eigen3 REQUIRED)
-pkg_check_modules(EIGEN3 REQUIRED eigen3>=3.2)
+# pkg_check_modules(EIGEN3 REQUIRED eigen3>=3.2)
+find_package(Eigen3 REQUIRED)
 find_package(OpenCV REQUIRED)
 
 set(Sophus_INCLUDE_DIRS /opt/ros/jazzy/include)
@@ -81,6 +82,9 @@ ament_target_dependencies(${PROJECT_NAME}_component
 # Link OpenCV libraries
 target_link_libraries(${PROJECT_NAME}_component
   ${OpenCV_LIBRARIES}
+  ${PCL_LIBRARIES}
+  ${flame_LIBRARIES}  # ← Use variables instead
+  ${Sophus_LIBRARIES}
 )
 
 ## --------------------------------------------------------------

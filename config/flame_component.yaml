@@ -1,10 +1,10 @@
 input:
-  camera_frame_id: openni_rgb_optical_frame
-  camera_world_frame_id: camera_world
+  camera_frame_id: mv_25003671
+  camera_world_frame_id: global
   subsample_factor: 1 # Process one out of this many images.
   poseframe_subsample_factor: 6 # Create pf every this number of images. Ignored if use_poseframe_updates is true.
   use_poseframe_updates: False # Listen to updates for poseframe poses.
-  poseframe_child_frame_id: body # Frame of pose information in pf messages.
+  poseframe_child_frame_id: mv_25003671 # Frame of pose information in pf messages.
   resize_factor: 1 # Downsample image width/height by this factor.
 
 output:

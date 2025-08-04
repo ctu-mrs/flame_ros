@@ -27,14 +27,14 @@
 namespace fu = flame::utils;
 
 #define CHECK_INIT \
-    if (!is_initialized_) { \
-        return; \
-    }
+  if (!is_initialized_) { \
+      return; \
+  }
 
-// void crash_handler(int sig) {
-//   FLAME_ASSERT(false);
-//   return;
-// }
+void crash_handler(int /*sig*/) {
+  FLAME_ASSERT(false);
+  return;
+}
 
 namespace flame_ros {
 
@@ -118,7 +118,8 @@ class FlameRos : public rclcpp::Node
     uint32_t first_pf_id_; // ID of first poseframe.
     bool use_poseframe_updates_;
     ////ros::Subscriber poseframe_sub_;
-    mrs_lib::SubscriberHandler<nav_msgs::msg::Path> poseframe_sub_;
+    //mrs_lib::SubscriberHandler<nav_msgs::msg::Path> poseframe_sub_;
+    rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr poseframe_sub_;
 
     // Stuff for checking angular rates.
     float max_angular_rate_;

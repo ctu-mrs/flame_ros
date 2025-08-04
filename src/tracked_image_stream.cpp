@@ -69,7 +69,7 @@ TrackedImageStream::TrackedImageStream(const std::string& world_frame_id,
   image_transport::ImageTransport it_(nh_);
   image_transport_.reset(new image_transport::ImageTransport(nh_));
 
-  cam_sub_ = image_transport_->subscribeCamera(std::string("image"), 10,
+  cam_sub_ = image_transport_->subscribeCamera(std::string("image_raw"), 10,
                                                 [this](const sensor_msgs::msg::Image::ConstSharedPtr& img,
                                                        const sensor_msgs::msg::CameraInfo::ConstSharedPtr& info) {
                                                  this->callback(img, info);
@@ -105,7 +105,7 @@ TrackedImageStream::TrackedImageStream(const std::string& world_frame_id,
   //mage_transport::ImageTransport it_(nh_);
   //image_transport_.reset(new image_transport::ImageTransport(nh_));
 
-  cam_sub_ = image_transport_->subscribeCamera("image", 10,
+  cam_sub_ = image_transport_->subscribeCamera("image_raw", 10,
                                              std::bind(&TrackedImageStream::callback,
                                                       this,
                                                       std::placeholders::_1,
