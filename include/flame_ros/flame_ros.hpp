@@ -26,6 +26,11 @@
 
 namespace fu = flame::utils;
 
+#define CHECK_INIT \
+    if (!is_initialized_) { \
+        return; \
+    }
+
 // void crash_handler(int sig) {
 //   FLAME_ASSERT(false);
 //   return;
@@ -37,22 +42,8 @@ class FlameRos : public rclcpp::Node
 {
   public:
     FlameRos(const rclcpp::NodeOptions & options);
-    void poseframeCallback(const nav_msgs::msg::Path::ConstSharedPtr msg);
-    void processFrame(const uint32_t img_id, const double time, const Sophus::SE3f& pose, const cv::Mat3b& rgb);
-    void main();
 
-    // // Convenience alias.
-    using Frame = ros_sensor_streams::TrackedImageStream::Frame;
-
-    #ifdef FLAME_WITH_FLA
-      enum Status {
-        GOOD = 0,
-        ALARM_TIMEOUT = 2,
-        FAIL_TIMEOUT = 3,
-      };
-    #endif
-
-    /**
+        /**
     * \brief Constructor.
     *
     * NOTE: Default, no-args constructor must exist.
@@ -73,8 +64,27 @@ class FlameRos : public rclcpp::Node
     FlameRos(FlameRos&& rhs) = delete;
     FlameRos& operator=(FlameRos&& rhs) = delete;
 
+    bool is_initialized(){return is_initialized_;}
+
   private:
-  
+    rclcpp::TimerBase::SharedPtr timer_initialization_;
+    bool is_initialized_;
+    void timerInitialization();
+    void poseframeCallback(const nav_msgs::msg::Path::ConstSharedPtr msg);
+    void processFrame(const uint32_t img_id, const double time, const Sophus::SE3f& pose, const cv::Mat3b& rgb);
+    void main();
+
+    // // Convenience alias.
+    using Frame = ros_sensor_streams::TrackedImageStream::Frame;
+
+    #ifdef FLAME_WITH_FLA
+      enum Status {
+        GOOD = 0,
+        ALARM_TIMEOUT = 2,
+        FAIL_TIMEOUT = 3,
+      };
+    #endif
+
     //std::thread thread_;
     //fu::LoadTracker load_;
 
