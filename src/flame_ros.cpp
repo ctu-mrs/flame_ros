@@ -363,16 +363,15 @@ void FlameRos::processFrame(const uint32_t img_id, const double time,
   cv::Mat1b img_gray;
   cv::cvtColor(rgb, img_gray, cv::COLOR_RGB2GRAY);
 
-  RCLCPP_INFO(get_logger(), "ING ID: %d", img_id);
-
   bool is_poseframe = ((static_cast<int>(img_id) -  first_pf_id_) %
                         poseframe_subsample_factor_) == 0;
+  std::string msg;
   bool update_success = sensor_->update(time, img_id, pose, img_gray,
-                                        is_poseframe);
+                                        is_poseframe, msg=msg);
 
   if (!update_success) {
     stats_.tock("process_frame");
-    if(!params_.debug_quiet) RCLCPP_WARN(get_logger(), "FlameRos: Unsuccessful update.\n");
+    if(!params_.debug_quiet) RCLCPP_WARN(get_logger(), "FlameRos: Unsuccessful update. Reason: %s\n", msg.c_str());
     return;
   }
 

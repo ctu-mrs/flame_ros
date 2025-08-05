@@ -1,4 +1,4 @@
-from launch_ros.actions import ComposableNodeContainer
+from launch_ros.actions import ComposableNodeContainer, Node
 from launch_ros.descriptions import ComposableNode
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
@@ -35,6 +35,12 @@ def generate_launch_description():
                     extra_arguments=[{'use_intra_process_comms': True}],
                 ),
             ]
+        ),
+        Node(
+            package='tf2_ros',
+            executable='static_transform_publisher',
+            name='static_transform_publisher',
+            arguments=['0','0','0','0','0','0','cam0','mv_25003671']
         )
     ])
 
