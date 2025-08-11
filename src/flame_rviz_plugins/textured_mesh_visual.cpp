@@ -42,6 +42,7 @@ namespace flame_rviz_plugins {
 
 TexturedMeshVisual::TexturedMeshVisual(Ogre::SceneManager* scene_manager,
                                        Ogre::SceneNode* parent_node,
+                                       std::shared_ptr<rclcpp::Node> ros_node_,
                                        Ogre::PolygonMode poly_mode,
                                        ShaderProgram shader_program) :
   Visual(scene_manager, parent_node),
@@ -62,7 +63,8 @@ TexturedMeshVisual::TexturedMeshVisual(Ogre::SceneManager* scene_manager,
   texture_shader_(),
   idepth_shader_(),
   jet_shader_(),
-  normal_shader_() {
+  normal_shader_(),
+  ros_node(ros_node_) {
   // Set ambient light.
   scene_manager->setAmbientLight(Ogre::ColourValue(1.0, 1.0, 1.0));
 
@@ -204,7 +206,7 @@ void TexturedMeshVisual::setShaderProgram(ShaderProgram shader_program) {
     auto fparams = pass->getFragmentProgramParameters();
     fparams->setNamedConstant("phong_shading", phong_shading_ ? 1 : 0);
   } else {
-    //RCLCPP_WARN("Unrecognized ShaderProgram!");
+    RCLCPP_WARN(ros_node->get_logger(), "Unrecognized ShaderProgram!");
     return;
   }
 
@@ -219,11 +221,11 @@ setFromMessage(const pcl_msgs::msg::PolygonMesh::ConstSharedPtr& mesh_msg,
                const sensor_msgs::msg::Image::ConstSharedPtr& tex_msg) {
   std::lock_guard<std::mutex> lock(*getMutex());
 
-  //ROS_DEBUG("Updating mesh!");
+  RCLCPP_DEBUG(ros_node->get_logger(), "Updating mesh!");
 
   if (mesh_msg->cloud.row_step !=
       mesh_msg->cloud.point_step * mesh_msg->cloud.width) {
-    //ROS_WARN("Row padding not supported!\n");
+    RCLCPP_WARN(ros_node->get_logger(), "Row padding not supported!\n");
     return;
   }
 
@@ -245,7 +247,7 @@ setFromMessage(const pcl_msgs::msg::PolygonMesh::ConstSharedPtr& mesh_msg,
     tex_img_ = cv_bridge::toCvCopy(tex_msg, "rgb8")->image;
     updateTexture(mesh_material_, tex_img_);
   } else if ((shader_program_ == ShaderProgram::TEXTURE) && (tex_msg == nullptr)) {
-    //ROS_ERROR("ShaderProgram set to TEXTURE, but texture message is NULL!");
+    RCLCPP_ERROR(ros_node->get_logger(), "ShaderProgram set to TEXTURE, but texture message is NULL!");
     return;
   }
 
@@ -262,7 +264,7 @@ setFromMessage(const pcl_msgs::msg::PolygonMesh::ConstSharedPtr& mesh_msg,
 
   getSceneNode()->setVisible(mesh_visibility_);
 
-  //ROS_DEBUG("Updated mesh!");
+  RCLCPP_DEBUG(ros_node->get_logger(), "Updated mesh!");
 
   return;
 }

@@ -40,6 +40,8 @@
 
 #include <flame_rviz_plugins/visual.hpp>
 
+#include <rclcpp/rclcpp.hpp>
+
 namespace Ogre {
 class SceneNode;
 class SceneManager;
@@ -84,6 +86,7 @@ class TexturedMeshVisual final : public Visual {
    */
   TexturedMeshVisual(Ogre::SceneManager* scene_manager,
                      Ogre::SceneNode* parent_node,
+                     std::shared_ptr<rclcpp::Node> ros_node_,
                      Ogre::PolygonMode poly_mode = Ogre::PM_WIREFRAME,
                      ShaderProgram shader_program = ShaderProgram::INVERSE_DEPTH);
   ~TexturedMeshVisual();
@@ -426,6 +429,8 @@ class TexturedMeshVisual final : public Visual {
   Ogre::HighLevelGpuProgramPtr idepth_shader_; // IDepth fragment shader.
   Ogre::HighLevelGpuProgramPtr jet_shader_; // Jet fragment shader.
   Ogre::HighLevelGpuProgramPtr normal_shader_; // Normal vector fragment shader.
+
+  std::shared_ptr<rclcpp::Node> ros_node;
 };
 
 }  // namespace flame_rviz_plugins

@@ -43,6 +43,8 @@
 
 #include <rclcpp/exceptions.hpp>
 
+#include <rclcpp/rclcpp.hpp>
+
 namespace flame_rviz_plugins {
 
 TexturedMeshDisplay::TexturedMeshDisplay() :
@@ -126,8 +128,8 @@ void TexturedMeshDisplay::onInitialize() {
   std::lock_guard<std::recursive_mutex> lock(mtx_);
 
   // Get the node from the RViz context
-  auto node = context_->getRosNodeAbstraction().lock()->get_raw_node();
-  tex_it_.reset(new image_transport::ImageTransport(node));
+  ros_node = context_->getRosNodeAbstraction().lock()->get_raw_node();
+  tex_it_.reset(new image_transport::ImageTransport(ros_node));
 
   // Scan for available transport plugins
   scanForTransportSubscriberPlugins();
@@ -311,7 +313,7 @@ void TexturedMeshDisplay::fillTransportOptionList(EnumProperty* property) {
 //   auto node = context_->getRosNodeAbstraction().lock()->get_raw_node();
   
 //   // Get topic names and types
-//   auto topic_names_and_types = node->get_topic_names_and_types();
+//   auto topic_names_and_types = ros_node->get_topic_names_and_types();
   
 //   const std::string& topic = tex_topic_prop_.getStdString();
   
@@ -392,9 +394,7 @@ void TexturedMeshDisplay::subscribe() {
     return;
   }
 
-  auto node = context_->getRosNodeAbstraction().lock()->get_raw_node();
-
-  //try {
+  try {
     mesh_filter_.reset(new message_filters::Subscriber<pcl_msgs::msg::PolygonMesh>());
     tex_filter_.reset(new image_transport::SubscriberFilter());
 
@@ -405,13 +405,13 @@ void TexturedMeshDisplay::subscribe() {
 
     if (!mesh_topic.empty()) {
       // Subscribe to the mesh topic.
-      mesh_filter_->subscribe(node, mesh_topic, rmw_qos_profile_default);
+      mesh_filter_->subscribe(ros_node, mesh_topic, rmw_qos_profile_default);
       mesh_filter_->registerCallback(
           std::bind(&TexturedMeshDisplay::processPolygonMeshMessage, this, std::placeholders::_1));
 
       if (!tex_topic.empty() && !tex_transport.empty()) {
         // Subscribe to texture topic.
-        tex_filter_->subscribe(node.get(), tex_topic, tex_transport, rmw_qos_profile_default);
+        tex_filter_->subscribe(ros_node.get(), tex_topic, tex_transport, rmw_qos_profile_default);
         tex_filter_->registerCallback(
             std::bind(&TexturedMeshDisplay::processTextureMessage, this, std::placeholders::_1));
       }
@@ -419,16 +419,38 @@ void TexturedMeshDisplay::subscribe() {
 
     setStatus(rviz_common::properties::StatusProperty::Ok, "Topic", "OK");
   // } catch(rclcpp::Exception& e) {
-  //   RCLCPP_DEBUG(node->get_logger(), "Error subscribing: %s", e.what());
+  //   RCLCPP_DEBUG(ros_node->get_logger(), "Error subscribing: %s", e.what());
   //   setStatus(rviz_common::properties::StatusProperty::Error, "Topic",
   //             QString("Error subscribing: ") + e.what());
   // } catch (image_transport::TransportLoadException& e) {
-  //   RCLCPP_DEBUG(node->get_logger(), "Error subscribing: %s", e.what());
+  //   RCLCPP_DEBUG(ros_node->get_logger(), "Error subscribing: %s", e.what());
   //   setStatus(rviz_common::properties::StatusProperty::Error, "Message",
   //             QString("Error subscribing: ") + e.what());
   // } catch (...) {
-  //   RCLCPP_DEBUG(node->get_logger(), "Caught unknown exception!");
+  //   RCLCPP_DEBUG(ros_node->get_logger(), "Caught unknown exception!");
   // }
+
+  } catch (const rclcpp::exceptions::RCLError& e) {
+    RCLCPP_DEBUG(ros_node->get_logger(), "Error subscribing: %s", e.what());
+    setStatus(rviz_common::properties::StatusProperty::Error, "Topic",
+              QString("Error subscribing: ") + e.what());
+  } catch (const rclcpp::exceptions::InvalidTopicNameError& e) {
+    RCLCPP_DEBUG(ros_node->get_logger(), "Error subscribing: %s", e.what());
+    setStatus(rviz_common::properties::StatusProperty::Error, "Topic",
+              QString("Error subscribing: ") + e.what());
+  } catch (const std::runtime_error& e) {
+    RCLCPP_DEBUG(ros_node->get_logger(), "Error subscribing: %s", e.what());
+    setStatus(rviz_common::properties::StatusProperty::Error, "Message",
+              QString("Error subscribing: ") + e.what());
+  } catch (const std::exception& e) {
+    RCLCPP_DEBUG(ros_node->get_logger(), "Error subscribing: %s", e.what());
+    setStatus(rviz_common::properties::StatusProperty::Error, "Topic",
+              QString("Error subscribing: ") + e.what());
+  } catch (...) {
+    RCLCPP_DEBUG(ros_node->get_logger(), "Caught unknown exception!");
+    setStatus(rviz_common::properties::StatusProperty::Error, "Topic",
+              QString("Unknown error occurred while subscribing"));
+  }
 
   return;
 }
@@ -470,7 +492,8 @@ void TexturedMeshDisplay::fixedFrameChanged() {
 
 void TexturedMeshDisplay::
 processTextureMessage(const sensor_msgs::msg::Image::ConstSharedPtr& tex_msg) {
-  //RCLCPP_DEBUG("Got a texture message at %f!\n", tex_msg->header.stamp.seconds());
+  double timestamp = tex_msg->header.stamp.sec + tex_msg->header.stamp.nanosec * 1e-9;
+  RCLCPP_DEBUG(ros_node->get_logger(), "Got a texture message at %f!\n", timestamp);
   std::lock_guard<std::recursive_mutex> lock(mtx_);
 
   if (!tex_msg) {
@@ -492,7 +515,8 @@ void TexturedMeshDisplay::
 processPolygonMeshMessage(const pcl_msgs::msg::PolygonMesh::ConstSharedPtr& msg) {
   std::lock_guard<std::recursive_mutex> lock(mtx_);
 
-  //RCLCPP_DEBUG("Got a mesh message at %f!\n", msg->header.stamp.toSec());
+  double timestamp = msg->header.stamp.sec + msg->header.stamp.nanosec * 1e-9;
+  RCLCPP_DEBUG(ros_node->get_logger(), "Got a mesh message at %f!\n", timestamp);
 
   if (!msg) {
     return;
@@ -530,11 +554,11 @@ processPolygonMeshMessage(const pcl_msgs::msg::PolygonMesh::ConstSharedPtr& msg)
   }
 
   if ((mesh_msg != nullptr) && (tex_msg != nullptr)) {
-    //RCLCPP_DEBUG("Found a match!");
+    RCLCPP_DEBUG(ros_node->get_logger(), "Found a match!");
     processTexturedMeshMessages(mesh_msg, tex_msg);
   }
 
-  //RCLCPP_DEBUG("Processed a mesh message!\n");
+  RCLCPP_DEBUG(ros_node->get_logger(), "Processed a mesh message!\n");
 
   return;
 }
@@ -542,7 +566,7 @@ processPolygonMeshMessage(const pcl_msgs::msg::PolygonMesh::ConstSharedPtr& msg)
 void TexturedMeshDisplay::
 processTexturedMeshMessages(const pcl_msgs::msg::PolygonMesh::ConstSharedPtr& mesh_msg,
                             const sensor_msgs::msg::Image::ConstSharedPtr& tex_msg) {
-  //RCLCPP_DEBUG("Got mesh and texture messages!\n");
+  RCLCPP_DEBUG(ros_node->get_logger(), "Got mesh and texture messages!\n");
   std::lock_guard<std::recursive_mutex> lock(mtx_);
 
   if (!mesh_msg || !tex_msg) {
@@ -562,7 +586,7 @@ processTexturedMeshMessages(const pcl_msgs::msg::PolygonMesh::ConstSharedPtr& me
         static_cast<TexturedMeshVisual::ShaderProgram>(shader_program_prop_.getOptionInt());
 
     visual_ = std::make_shared<TexturedMeshVisual>(scene_manager_,
-                                                   getSceneNode(), pm, sp);
+                                                   getSceneNode(), ros_node, pm, sp);
     visual_->setSceneColorScale(scene_color_scale_prop_.getFloat());
   }
 
@@ -593,8 +617,8 @@ updateFixedFrameTransform(const std_msgs::msg::Header& header) {
   if (!context_->getFrameManager()->getTransform(header.frame_id,
                                                  header.stamp,
                                                  position, orientation)) {
-    //RCLCPP_DEBUG("Error transforming from frame '%s' to frame '%s'",
-              //header.frame_id.c_str(), qPrintable(fixed_frame_);
+    RCLCPP_DEBUG(ros_node->get_logger(), "Error transforming from frame '%s' to frame '%s'",
+             header.frame_id.c_str(), context_->getFixedFrame().toStdString().c_str());
     return;
   }
 

@@ -102,6 +102,8 @@ class TexturedMeshDisplay: public rviz_common::Display {
   void fillTransportOptionList(EnumProperty* property);
 
  protected:
+  std::shared_ptr<rclcpp::Node> ros_node;
+
   // Scans for available transport plugins. Copied from rviz_common::DepthCloudDisplay.
   void scanForTransportSubscriberPlugins();
 
