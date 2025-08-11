@@ -36,5 +36,6 @@
 
   <export>
     <build_type>ament_cmake</build_type>
+    <!--<rviz plugin="rviz_common_plugins.xml"/>-->
   </export>
 </package>

@@ -118,30 +118,46 @@ target_link_libraries(${PROJECT_NAME}_component
 # include_directories(${OGRE_INCLUDE_DIRS})
 # link_directories(${OGRE_LIBRARY_DIRS})
 
-add_library(textured_mesh_display SHARED
-  src/flame_rviz_plugins/textured_mesh_display.cpp
-  src/flame_rviz_plugins/textured_mesh_visual.cpp
-  src/flame_rviz_plugins/surface_normals_visual.cpp
-)
+#pkg_check_modules(OGRE REQUIRED OGRE)
 
-ament_target_dependencies(textured_mesh_display
-  ${DEPENDENCIES}
-  Eigen3
-  pluginlib
-  rviz_common
-)
+#add_library(textured_mesh_display SHARED
+#  src/flame_rviz_plugins/textured_mesh_display.cpp
+#  src/flame_rviz_plugins/textured_mesh_visual.cpp
+#  src/flame_rviz_plugins/surface_normals_visual.cpp
+#)
 
-target_link_libraries(textured_mesh_display
-  ${OpenCV_LIBRARIES}
-  ${PCL_LIBRARIES}
-  ${flame_LIBRARIES}  # ← Use variables instead
-  ${Sophus_LIBRARIES}
-)
+#ament_target_dependencies(textured_mesh_display
+#  ${DEPENDENCIES}
+#  Eigen3
+#  pluginlib
+#  rviz_common
+#)
+
+#target_link_libraries(textured_mesh_display
+#  ${OpenCV_LIBRARIES}
+#  ${PCL_LIBRARIES}
+#  ${flame_LIBRARIES}
+#  ${Sophus_LIBRARIES}
+#  ${rclcpp_LIBRARIES}
+#  ${rviz_common_LIBRARIES}
+#  ${rviz_rendering_LIBRARIES}
+#  ${pcl_msgs_LIBRARIES}
+#  ${sensor_msgs_LIBRARIES}
+#  ${image_transport_LIBRARIES}
+#  ${cv_bridge_LIBRARIES}
+#  ${message_filters_LIBRARIES}
+#  ${pluginlib_LIBRARIES}
+#  # Add OGRE libraries if needed
+#  #${OGRE_LIBRARIES}
+#)
+
+#target_compile_features(textured_mesh_display PUBLIC cxx_std_20)
 
 ## --------------------------------------------------------------
 ## |                       install                              |
 ## --------------------------------------------------------------
 
+#install(TARGETS ${PROJECT_NAME}_component textured_mesh_display
 install(TARGETS ${PROJECT_NAME}_component
   EXPORT export_${PROJECT_NAME}
   ARCHIVE DESTINATION lib
@@ -159,9 +175,9 @@ install(
   DESTINATION share/${PROJECT_NAME}
 )
 
-install(FILES rviz_common_plugins.xml
-  DESTINATION share/${PROJECT_NAME}
-)
+#install(FILES rviz_common_plugins.xml
+#  DESTINATION share/${PROJECT_NAME}
+#)
 
 ament_export_include_directories(
   include
@@ -176,6 +192,6 @@ ament_export_dependencies(
   Eigen3
 )
 
-pluginlib_export_plugin_description_file(rviz_common rviz_common_plugins.xml)
+#pluginlib_export_plugin_description_file(rviz_common rviz_common_plugins.xml)
 
 ament_package()

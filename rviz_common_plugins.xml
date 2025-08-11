@@ -1,5 +1,0 @@
-<library path="textured_mesh_display">
-  <class type="flame_rviz_plugins::TexturedMeshDisplay" base_class_type="rviz_common::Display">
-    <description></description>
-  </class>
-</library>
