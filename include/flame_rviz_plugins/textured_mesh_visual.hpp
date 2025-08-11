@@ -31,6 +31,9 @@
 #include <OGRE/OgreTechnique.h>
 #include <OGRE/OgrePass.h>
 #include <OGRE/OgreMaterial.h>
+#include <OGRE/OgreHighLevelGpuProgram.h>
+//#include <OGRE/OgreGpuProgramParameters.h>
+#include <OGRE/OgreMesh.h>
 
 #include <pcl_msgs/msg/polygon_mesh.hpp>
 #include <sensor_msgs/msg/image.hpp>
@@ -413,10 +416,10 @@ class TexturedMeshVisual final : public Visual {
 
   bool mesh_visibility_; // True if mesh should be visiable.
 
+  ShaderProgram shader_program_; // Controls which fragment shader to use.
+
   float scene_color_scale_; // Parameter for color scale.
   bool phong_shading_; // True if phong shading should be applied.
-
-  ShaderProgram shader_program_; // Controls which fragment shader to use.
 
   Ogre::HighLevelGpuProgramPtr vtx_shader_; // Main vertex shader.
   Ogre::HighLevelGpuProgramPtr texture_shader_; // Image texture fragment shader.

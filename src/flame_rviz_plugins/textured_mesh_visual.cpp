@@ -20,14 +20,14 @@
  * @date 2017-02-21 20:53:05 (Tue)
  */
 
-#include "flame_rviz_plugins/textured_mesh_visual.h"
+#include "flame_rviz_plugins/textured_mesh_visual.hpp"
 
 #include <thread>
 
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
 
-#include <cv_bridge/cv_bridge.h>
+#include <cv_bridge/cv_bridge.hpp>
 
 #include <OGRE/OgreMeshManager.h>
 #include <OGRE/OgreHardwareBufferManager.h>
@@ -157,14 +157,14 @@ TexturedMeshVisual::~TexturedMeshVisual() {
     getSceneManager()->destroyEntity(entity_);
   }
 
-  if (!mesh_material_.isNull()) {
+  if (mesh_material_) {
     mesh_material_->getTechnique(0)->getPass(0)->removeAllTextureUnitStates();
     Ogre::MaterialManager::getSingleton().remove(material_name_);
   }
 
-  if (!mesh_.isNull()) {
+  if (mesh_) {
     Ogre::MeshManager::getSingleton().remove(mesh_->getHandle());
-    mesh_.setNull();
+    mesh_ = nullptr;
   }
 
   return;
@@ -174,7 +174,7 @@ void TexturedMeshVisual::setShaderProgram(ShaderProgram shader_program) {
   std::lock_guard<std::mutex> lock(*getMutex());
   shader_program_ = shader_program;
 
-  if (mesh_material_.isNull()) {
+  if (!mesh_material_) {
     return;
   }
 
@@ -204,7 +204,7 @@ void TexturedMeshVisual::setShaderProgram(ShaderProgram shader_program) {
     auto fparams = pass->getFragmentProgramParameters();
     fparams->setNamedConstant("phong_shading", phong_shading_ ? 1 : 0);
   } else {
-    ROS_WARN("Unrecognized ShaderProgram!");
+    //RCLCPP_WARN("Unrecognized ShaderProgram!");
     return;
   }
 
@@ -215,20 +215,20 @@ void TexturedMeshVisual::setShaderProgram(ShaderProgram shader_program) {
 // https://grahamedgecombe.com/blog/custom-meshes-in-ogre3d
 // http://www.ogre3d.org/tikiwiki/Generating+A+Mesh
 void TexturedMeshVisual::
-setFromMessage(const pcl_msgs::PolygonMesh::ConstPtr& mesh_msg,
-               const sensor_msgs::Image::ConstPtr& tex_msg) {
+setFromMessage(const pcl_msgs::msg::PolygonMesh::ConstSharedPtr& mesh_msg,
+               const sensor_msgs::msg::Image::ConstSharedPtr& tex_msg) {
   std::lock_guard<std::mutex> lock(*getMutex());
 
-  ROS_DEBUG("Updating mesh!");
+  //ROS_DEBUG("Updating mesh!");
 
   if (mesh_msg->cloud.row_step !=
       mesh_msg->cloud.point_step * mesh_msg->cloud.width) {
-    ROS_WARN("Row padding not supported!\n");
+    //ROS_WARN("Row padding not supported!\n");
     return;
   }
 
   /*==================== Update mesh geometry. ====================*/
-  if (mesh_.isNull()) {
+  if (!mesh_) {
     // Create mesh and submesh.
     createMesh(mesh_msg->cloud.fields);
   }
@@ -245,7 +245,7 @@ setFromMessage(const pcl_msgs::PolygonMesh::ConstPtr& mesh_msg,
     tex_img_ = cv_bridge::toCvCopy(tex_msg, "rgb8")->image;
     updateTexture(mesh_material_, tex_img_);
   } else if ((shader_program_ == ShaderProgram::TEXTURE) && (tex_msg == nullptr)) {
-    ROS_ERROR("ShaderProgram set to TEXTURE, but texture message is NULL!");
+    //ROS_ERROR("ShaderProgram set to TEXTURE, but texture message is NULL!");
     return;
   }
 
@@ -262,12 +262,12 @@ setFromMessage(const pcl_msgs::PolygonMesh::ConstPtr& mesh_msg,
 
   getSceneNode()->setVisible(mesh_visibility_);
 
-  ROS_DEBUG("Updated mesh!");
+  //ROS_DEBUG("Updated mesh!");
 
   return;
 }
 
-void TexturedMeshVisual::createMesh(const std::vector<sensor_msgs::PointField>& fields) {
+void TexturedMeshVisual::createMesh(const std::vector<sensor_msgs::msg::PointField>& fields) {
   Ogre::String resource_group =
     Ogre::ResourceGroupManager::DEFAULT_RESOURCE_GROUP_NAME;
 
@@ -280,7 +280,7 @@ void TexturedMeshVisual::createMesh(const std::vector<sensor_msgs::PointField>& 
   Ogre::VertexDeclaration* vtx_dec = mesh_->sharedVertexData->vertexDeclaration;
 
   // Loop through point fields and add vertex elements.
-  int field_idx = 0;
+  long unsigned int field_idx = 0;
   while (field_idx < fields.size()) {
     std::string name = fields[field_idx].name;
 
@@ -309,14 +309,14 @@ void TexturedMeshVisual::createMesh(const std::vector<sensor_msgs::PointField>& 
 
 void TexturedMeshVisual::
 updateVertexBuffer(const Ogre::MeshPtr& mesh,
-                   const sensor_msgs::PointCloud2& cloud) {
+                   const sensor_msgs::msg::PointCloud2& cloud) {
   Ogre::HardwareVertexBufferSharedPtr vtx_buffer;
 
   if (mesh->sharedVertexData->vertexBufferBinding->getBufferCount() > 0) {
     vtx_buffer = mesh->sharedVertexData->vertexBufferBinding->getBuffer(0);
   }
 
-  if ((vtx_buffer.isNull()) || (vtx_buffer->getSizeInBytes() < cloud.data.size())) {
+  if ((!vtx_buffer) || (vtx_buffer->getSizeInBytes() < cloud.data.size())) {
     // Create a new vertex buffer.
     Ogre::HardwareBufferManager& hw_manager =
         Ogre::HardwareBufferManager::getSingleton();
@@ -337,7 +337,7 @@ updateVertexBuffer(const Ogre::MeshPtr& mesh,
 }
 
 void TexturedMeshVisual::updateIndexBuffer(const Ogre::MeshPtr& mesh,
-                                           const std::vector<pcl_msgs::Vertices>& indices) {
+                                           const std::vector<pcl_msgs::msg::Vertices>& indices) {
   Ogre::SubMesh* sub_mesh = mesh->getSubMesh(0);
   sub_mesh->useSharedVertices = true;
   sub_mesh->indexData->indexCount = indices.size() * 3;
@@ -345,7 +345,7 @@ void TexturedMeshVisual::updateIndexBuffer(const Ogre::MeshPtr& mesh,
 
   auto idx_buffer = sub_mesh->indexData->indexBuffer;
 
-  if (idx_buffer.isNull() ||
+  if (!idx_buffer ||
       (idx_buffer->getNumIndexes() < sub_mesh->indexData->indexCount)) {
     // Create new index buffer.
     Ogre::HardwareBufferManager& hw_manager =
@@ -362,7 +362,7 @@ void TexturedMeshVisual::updateIndexBuffer(const Ogre::MeshPtr& mesh,
     static_cast<uint32_t*>(idx_buffer->lock(Ogre::HardwareBuffer::HBL_NORMAL));
 
   // Copy index data.
-  for (int ii = 0; ii < indices.size(); ++ii) {
+  for (long unsigned int ii = 0; ii < indices.size(); ++ii) {
     idx_data[3*ii] = indices[ii].vertices[0];
     idx_data[3*ii + 1] = indices[ii].vertices[1];
     idx_data[3*ii + 2] = indices[ii].vertices[2];
@@ -384,7 +384,7 @@ void TexturedMeshVisual::updateTexture(const Ogre::MaterialPtr& material,
   Ogre::TextureManager* tex_man = Ogre::TextureManager::getSingletonPtr();
 
   Ogre::TexturePtr tex = tex_man->getByName(tex_name_, resource_group);
-  if (!tex.isNull()) {
+  if (tex) {
     // Delete old texture.
     tex_man->remove(tex_name_);
   }

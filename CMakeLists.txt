@@ -120,6 +120,8 @@ target_link_libraries(${PROJECT_NAME}_component
 
 add_library(textured_mesh_display SHARED
   src/flame_rviz_plugins/textured_mesh_display.cpp
+  src/flame_rviz_plugins/textured_mesh_visual.cpp
+  src/flame_rviz_plugins/surface_normals_visual.cpp
 )
 
 ament_target_dependencies(textured_mesh_display

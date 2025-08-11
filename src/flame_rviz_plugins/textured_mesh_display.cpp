@@ -392,6 +392,8 @@ void TexturedMeshDisplay::subscribe() {
     return;
   }
 
+  auto node = context_->getRosNodeAbstraction().lock()->get_raw_node();
+
   //try {
     mesh_filter_.reset(new message_filters::Subscriber<pcl_msgs::msg::PolygonMesh>());
     tex_filter_.reset(new image_transport::SubscriberFilter());
@@ -400,8 +402,6 @@ void TexturedMeshDisplay::subscribe() {
     std::string tex_topic = tex_topic_prop_.getTopicStd();
 
     std::string tex_transport = tex_transport_prop_->getStdString();
-
-    auto node = context_->getRosNodeAbstraction().lock()->get_raw_node();
 
     if (!mesh_topic.empty()) {
       // Subscribe to the mesh topic.
@@ -419,15 +419,15 @@ void TexturedMeshDisplay::subscribe() {
 
     setStatus(rviz_common::properties::StatusProperty::Ok, "Topic", "OK");
   // } catch(rclcpp::Exception& e) {
-  //   //RCLCPP_DEBUG("Error subscribing: %s", e.what());
+  //   RCLCPP_DEBUG(node->get_logger(), "Error subscribing: %s", e.what());
   //   setStatus(rviz_common::properties::StatusProperty::Error, "Topic",
   //             QString("Error subscribing: ") + e.what());
   // } catch (image_transport::TransportLoadException& e) {
-  //   //RCLCPP_DEBUG("Error subscribing: %s", e.what());
+  //   RCLCPP_DEBUG(node->get_logger(), "Error subscribing: %s", e.what());
   //   setStatus(rviz_common::properties::StatusProperty::Error, "Message",
   //             QString("Error subscribing: ") + e.what());
   // } catch (...) {
-  //   //RCLCPP_DEBUG("Caught unknown exception!");
+  //   RCLCPP_DEBUG(node->get_logger(), "Caught unknown exception!");
   // }
 
   return;
