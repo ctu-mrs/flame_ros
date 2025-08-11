@@ -33,6 +33,7 @@ def generate_launch_description():
                                  "/flame/src/flame_ros/config/flame_component.yaml"],
                     # ..
                     extra_arguments=[{'use_intra_process_comms': True}],
+                    remappings=[('/uav1/image_raw', '/uav1/image_rect')]
                 ),
             ]
         ),
