@@ -12,6 +12,7 @@ find_package(ament_cmake REQUIRED)
 find_package(flame REQUIRED)
 find_package(Sophus REQUIRED)
 find_package(PCL REQUIRED)
+find_package(rviz_common REQUIRED)
 
 set(DEPENDENCIES
   rclcpp
@@ -26,6 +27,7 @@ set(DEPENDENCIES
   pcl_msgs
   pcl_conversions
   flame_ros_msgs
+  pluginlib
   )
 
 set(EXECUTABLES
@@ -41,6 +43,7 @@ endforeach()
 # pkg_check_modules(EIGEN3 REQUIRED eigen3>=3.2)
 find_package(Eigen3 REQUIRED)
 find_package(OpenCV REQUIRED)
+find_package(OGRE REQUIRED)
 
 set(Sophus_INCLUDE_DIRS /opt/ros/jazzy/include)
 
@@ -53,6 +56,8 @@ include_directories(
   ${cv_bridge_INCLUDE_DIRS}
   ${flame_INCLUDE_DIRS}
   ${PCL_INCLUDE_DIRS}
+  ${OGRE_INCLUDE_DIRS}
+  ${rviz_common_INCLUDE_DIRS}
 )
 
 ## --------------------------------------------------------------
@@ -87,6 +92,50 @@ target_link_libraries(${PROJECT_NAME}_component
   ${Sophus_LIBRARIES}
 )
 
+## | ----------------- RViz plugins ----------------- |
+
+# pkg_check_modules(OGRE OGRE)
+
+# ## This plugin includes Qt widgets, so we must include Qt like so:
+# ## We'll use the version that rviz used so they are compatible.
+# set(CMAKE_AUTOMOC ON) # This setting causes Qt's "MOC" generation to happen automatically.
+# if(rviz_QT_VERSION VERSION_LESS "5")
+#   message(STATUS "Using Qt4 based on the rviz_QT_VERSION: ${rviz_QT_VERSION}")
+#   find_package(Qt4 ${rviz_QT_VERSION} EXACT REQUIRED QtCore QtGui)
+#   ## pull in all required include dirs, define QT_LIBRARIES, etc.
+#   include(${QT_USE_FILE})
+# else()
+#   message(STATUS "Using Qt5 based on the rviz_QT_VERSION: ${rviz_QT_VERSION}")
+#   find_package(Qt5 ${rviz_QT_VERSION} EXACT REQUIRED Core Widgets)
+#   ## make target_link_libraries(${QT_LIBRARIES}) pull in all required dependencies
+#   set(QT_LIBRARIES Qt5::Widgets)
+# endif()
+
+# ## Prefer the Qt signals and slots to avoid defining "emit", "slots",
+# ## etc because they can conflict with boost signals, so define QT_NO_KEYWORDS here.
+# add_definitions(-DQT_NO_KEYWORDS)
+
+# include_directories(${OGRE_INCLUDE_DIRS})
+# link_directories(${OGRE_LIBRARY_DIRS})
+
+add_library(textured_mesh_display SHARED
+  src/flame_rviz_plugins/textured_mesh_display.cpp
+)
+
+ament_target_dependencies(textured_mesh_display
+  ${DEPENDENCIES}
+  Eigen3
+  pluginlib
+  rviz_common
+)
+
+target_link_libraries(textured_mesh_display
+  ${OpenCV_LIBRARIES}
+  ${PCL_LIBRARIES}
+  ${flame_LIBRARIES}  # ← Use variables instead
+  ${Sophus_LIBRARIES}
+)
+
 ## --------------------------------------------------------------
 ## |                       install                              |
 ## --------------------------------------------------------------
@@ -108,6 +157,10 @@ install(
   DESTINATION share/${PROJECT_NAME}
 )
 
+install(FILES rviz_common_plugins.xml
+  DESTINATION share/${PROJECT_NAME}
+)
+
 ament_export_include_directories(
   include
 )
@@ -120,5 +173,7 @@ ament_export_dependencies(
   ${DEPENDENCIES}
   Eigen3
 )
+
+pluginlib_export_plugin_description_file(rviz_common rviz_common_plugins.xml)
 
 ament_package()
