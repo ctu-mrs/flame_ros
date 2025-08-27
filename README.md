@@ -8,9 +8,12 @@ environment by posing the depth estimation problem as a variational optimization
 over a Delaunay graph that can be solved at framerate, even on computationally
 constrained platforms.
 
+
+> :warning: **Attention please: This is a refactored version of the original FLaME [here](<https://github.com/ctu-mrs/flame/tree/ros2>)**
+
 The `flame_ros` repository contains the ROS bindings, visualization code, and
 offline frontends for the algorithm. The core library can be
-found [here](https://github.com/robustrobotics/flame.git).
+found [here](<https://github.com/ctu-mrs/flame/tree/ros2>). <!--[here](https://github.com/robustrobotics/flame.git)-->
 
 <p align="center">
     <a href="https://www.youtube.com/watch?v=vB_F-Sj0AX0">
@@ -26,32 +29,35 @@ found [here](https://github.com/robustrobotics/flame.git).
 - W. Nicholas Greene (wng@csail.mit.edu)
 
 ## Quickstart
-Build the provided [Docker](https://www.docker.com/) image and run an example
-dataset (requires [nvidia-docker](https://github.com/NVIDIA/nvidia-docker) for
-rviz):
-```bash
-# Build the image.
-cd flame_ros
-docker build --rm -t flame -f scripts/Dockerfile .
 
-# Run an example dataset.
-./scripts/flame_docker_example.sh
-```
-You may need to run `xhost +local:root` in order to forward rviz outside the container.
 
 ## Dependencies
-- Ubuntu 16.04
-- ROS Kinetic
-- OpenCV 3.2
-- Boost 1.54
-- PCL 1.7
-- Eigen 3.2
+- Ubuntu 24.04
+- ROS2 Jazzy
+- OpenCV 4.6.0
+- Boost 1.83.0
+- PCL 1.14.0
+- Eigen 3.4
 - Sophus (SHA: b474f05f839c0f63c281aa4e7ece03145729a2cd)
-- [flame](https://github.com/robustrobotics/flame.git)
-- catkin_tools (optional)
+- [flame](https://github.com/ctu-mrs/flame/tree/ros2) <!--- [flame](https://github.com/robustrobotics/flame.git)"-->
+
+## Quickstart
+
+1. Add CTU MRS PPA:
+
+```bash
+curl https://ctu-mrs.github.io/ppa2-stable/add_ros_ppa.sh | bash
+sudo apt update
+```
+
+2. Install all the packages:
+
+```bash
+sudo apt install ros-jazzy-mrs-bluefox2 ros-jazzy-mrs-mrs-serial ros-jazzy-mrs-flame ros-jazzy-mrs-flame-ros-msgs ros-jazzy-mrs-flame-ros ros-jazzy-mrs-open-vins-core ros-jazzy-mrs-rviz-plugins ros-jazzy-mrs-uav-flightforge-simulator
+```
 
 ## Installation
-**NOTE:** These instructions assume you are running ROS Kinetic on Ubuntu 16.04
+**NOTE:** These instructions assume you are running ROS2 Jazzy on Ubuntu 24.04
 and are interested in installing both `flame` and `flame_ros`. See the
 installation instructions for `flame` if you only wish to install `flame`.
 
