@@ -24,11 +24,13 @@ def generate_launch_description():
         name='flame_ros',
         namespace='uav1',
         parameters=[{'use_sim_time': True},
-                    LaunchConfiguration('custom_config')],
+                    LaunchConfiguration('custom_config'),
+                    {'input': {'use_poseframe_updates': False}}],
         # ..
         extra_arguments=[{'use_intra_process_comms': True}],
-        remappings=[('/uav1/image_raw', '/uav1/rgb/image_raw'),
-                    ('/uav1/camera_info', '/uav1/rgb/camera_info')]
+        remappings=[('/uav1/image_raw', '/uav1/stereo/left/image_mono'),
+                    ('/uav1/camera_info', '/uav1/stereo/left/camera_info'),
+                    ('/uav1/odom', '/uav1/odomimu')]
     )
     
     parser = RemappingsCustomConfigParser(node, LaunchConfiguration('custom_config'))

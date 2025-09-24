@@ -8,6 +8,7 @@ FlameRos::FlameRos(const rclcpp::NodeOptions & options) :
   rclcpp::Node(NODE_NAME, options),
   is_initialized_(false),
   tf_buffer_(get_clock()),
+  odom_path(nullptr),
   pose_frame_id(0)
 {
   timer_initialization_ = create_wall_timer(std::chrono::duration<double>(1.0), std::bind(&FlameRos::timerInitialization, this));
@@ -205,6 +206,7 @@ void FlameRos::timerInitialization() {
 
   pfs_inited_ = true; // Default values.
   first_pf_id_ = 0;
+  RCLCPP_INFO(get_logger(), "poseframe updated enabled: %s", use_poseframe_updates_ ? "true" : "false");
   if (use_poseframe_updates_) {
       // Wait until first pf message received with >= 2 pfs so that we can
       // estimate the poseframe subsample factor and offset.
@@ -224,6 +226,8 @@ void FlameRos::timerInitialization() {
 
       poseframe_sub_ = create_subscription<nav_msgs::msg::Path>(
         "pathimu", 10, std::bind(&FlameRos::poseframeCallback, this, std::placeholders::_1));
+      odom_sub_ = create_subscription<nav_msgs::msg::Odometry>(
+         "odom", 10, std::bind(&FlameRos::odomCallback, this, std::placeholders::_1));
   }
 
   // Set up publishers. For some reason this appears to take a while.
@@ -290,6 +294,7 @@ void FlameRos::poseframeCallback(const nav_msgs::msg::Path::ConstSharedPtr msg) 
 
     pose_frame_id++;
     if(!params_.debug_quiet) RCLCPP_INFO(get_logger(), "FlameRos: Got a poseframe message!\n");
+    RCLCPP_INFO(get_logger(), "FlameRos: Got a poseframe message!\n");
 
     // Get transform to camera_world.
     geometry_msgs::msg::TransformStamped tf;
@@ -352,6 +357,52 @@ void FlameRos::poseframeCallback(const nav_msgs::msg::Path::ConstSharedPtr msg) 
     }
 
     return;
+}
+
+void FlameRos::append_odom_to_path(nav_msgs::msg::Odometry::ConstSharedPtr odom_msg)
+{
+  if (!odom_path) {
+      odom_path = std::make_shared<nav_msgs::msg::Path>();
+  }
+  // Update path header with current timestamp and frame
+  // odom_path->header.stamp = odom_msg->header.stamp;
+  // odom_path->header.frame_id = odom_msg->header.frame_id;
+  odom_path->header.stamp.sec = odom_msg->header.stamp.sec;
+  odom_path->header.stamp.nanosec = odom_msg->header.stamp.nanosec;
+  odom_path->header.frame_id = odom_msg->header.frame_id;
+
+  // Extract pose from odometry
+  const auto& current_pose = odom_msg->pose.pose;
+
+  // Check if we should add this pose based on distance threshold
+  //if (should_add_pose(current_pose))
+  //{
+      // Create PoseStamped message
+      geometry_msgs::msg::PoseStamped pose_stamped;
+      pose_stamped.header = odom_msg->header;
+      pose_stamped.pose = current_pose;
+
+      // Add to path
+      odom_path->poses.push_back(pose_stamped);
+
+      // Update last pose
+      //last_pose_ = current_pose;
+      //has_last_pose_ = true;
+
+      // Limit path length to prevent memory issues
+      //if (static_cast<int>(odom_path->poses.size()) > max_path_length_)
+      //{
+          odom_path->poses.erase(odom_path->poses.begin());  // Remove oldest pose
+      //}
+
+      RCLCPP_DEBUG(this->get_logger(), "Added pose to path. Total poses: %zu", 
+                  odom_path->poses.size());
+  //}
+}
+
+void FlameRos::odomCallback(const nav_msgs::msg::Odometry::ConstSharedPtr odom_msg) {
+  append_odom_to_path(odom_msg);
+  poseframeCallback(odom_path);
 }
 
 void FlameRos::processFrame(const uint32_t img_id, const double time,

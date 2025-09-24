@@ -16,6 +16,7 @@
 #include <flame/params.h>
 
 #include <nav_msgs/msg/path.hpp>
+#include <nav_msgs/msg/odometry.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <pcl_msgs/msg/polygon_mesh.hpp>
 #include <geometry_msgs/msg/transform_stamped.hpp>
@@ -71,6 +72,8 @@ class FlameRos : public rclcpp::Node
     bool is_initialized_;
     void timerInitialization();
     void poseframeCallback(const nav_msgs::msg::Path::ConstSharedPtr msg);
+    void append_odom_to_path(nav_msgs::msg::Odometry::ConstSharedPtr odom_msg);
+    void odomCallback(const nav_msgs::msg::Odometry::ConstSharedPtr odom_msg);
     void processFrame(const uint32_t img_id, const double time, const Sophus::SE3f& pose, const cv::Mat3b& rgb);
     void main();
 
@@ -120,6 +123,9 @@ class FlameRos : public rclcpp::Node
     ////ros::Subscriber poseframe_sub_;
     //mrs_lib::SubscriberHandler<nav_msgs::msg::Path> poseframe_sub_;
     rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr poseframe_sub_;
+    rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
+
+    nav_msgs::msg::Path::SharedPtr odom_path;
 
     // Stuff for checking angular rates.
     float max_angular_rate_;
