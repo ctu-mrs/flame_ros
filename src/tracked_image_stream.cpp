@@ -32,6 +32,8 @@
 
 #include "ros_sensor_streams/conversions.h"
 
+#include <mrs_lib/attitude_converter.h>
+
 namespace ros_sensor_streams {
 
 TrackedImageStream::TrackedImageStream(const std::string& world_frame_id,
@@ -69,7 +71,7 @@ TrackedImageStream::TrackedImageStream(const std::string& world_frame_id,
   image_transport::ImageTransport it_(nh_);
   image_transport_.reset(new image_transport::ImageTransport(nh_));
 
-  cam_sub_ = image_transport_->subscribeCamera(std::string("image_raw"), 10,
+  cam_sub_ = image_transport_->subscribeCamera(std::string("~/image_in"), 10,
                                                 [this](const sensor_msgs::msg::Image::ConstSharedPtr& img,
                                                        const sensor_msgs::msg::CameraInfo::ConstSharedPtr& info) {
                                                  this->callback(img, info);
@@ -105,7 +107,7 @@ TrackedImageStream::TrackedImageStream(const std::string& world_frame_id,
   //mage_transport::ImageTransport it_(nh_);
   //image_transport_.reset(new image_transport::ImageTransport(nh_));
 
-  cam_sub_ = image_transport_->subscribeCamera("image_raw", 10,
+  cam_sub_ = image_transport_->subscribeCamera("~/image_in", 10,
                                              std::bind(&TrackedImageStream::callback,
                                                       this,
                                                       std::placeholders::_1,
@@ -190,6 +192,7 @@ void TrackedImageStream::callback(const std::shared_ptr<const sensor_msgs::msg::
   }
 
   Sophus::SE3f pose;
+
   tfToSophusSE3<float>(tf.transform, &pose);
 
   Frame frame;

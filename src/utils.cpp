@@ -41,8 +41,8 @@ void publishFlameNodeletStats(mrs_lib::PublisherHandler<flame_ros_msgs::msg::Fla
                               const std::unordered_map<std::string, double>& stats,
                               const std::unordered_map<std::string, double>& timings) {
   flame_ros_msgs::msg::FlameNodeletStats::SharedPtr msg(new flame_ros_msgs::msg::FlameNodeletStats());
-  msg->header.stamp.sec = time;
-  msg->header.stamp.nanosec = 0;
+
+  msg->header.stamp = rclcpp::Time(static_cast<int64_t>(time * 1e9), RCL_ROS_TIME);
 
   msg->img_id = img_id;
   msg->timestamp = time;
@@ -94,8 +94,8 @@ void publishFlameStats(mrs_lib::PublisherHandler<flame_ros_msgs::msg::FlameStats
                        const std::unordered_map<std::string, double>& stats,
                        const std::unordered_map<std::string, double>& timings) {
   flame_ros_msgs::msg::FlameStats::SharedPtr msg(new flame_ros_msgs::msg::FlameStats());
-  msg->header.stamp.sec = time;
-  msg->header.stamp.nanosec = 0;
+
+  msg->header.stamp = rclcpp::Time(static_cast<int64_t>(time * 1e9), RCL_ROS_TIME);
 
   msg->img_id = img_id;
   msg->timestamp = time;
@@ -173,12 +173,14 @@ void publishDepthMesh(mrs_lib::PublisherHandler<pcl_msgs::msg::PolygonMesh>& mes
                       const std::vector<bool>& tri_validity,
                       const cv::Mat3b& rgb) {
   pcl_msgs::msg::PolygonMesh::SharedPtr msg(new pcl_msgs::msg::PolygonMesh());
-  msg->header.stamp.sec = time;
-  msg->header.stamp.nanosec = 0;
+
+  msg->header.stamp = rclcpp::Time(static_cast<int64_t>(time * 1e9), RCL_ROS_TIME);
+
   msg->header.frame_id = frame_id;
 
   // Create point cloud to hold vertices.
   pcl::PointCloud<flame_ros::PointNormalUV> cloud;
+
   cloud.width = vertices.size();
   cloud.height = 1;
   cloud.points.resize(vertices.size());
@@ -215,8 +217,9 @@ void publishDepthMesh(mrs_lib::PublisherHandler<pcl_msgs::msg::PolygonMesh>& mes
 
   // NOTE: Header fields need to be filled in after pcl::toROSMsg() call.
   msg->cloud.header = std_msgs::msg::Header();
-  msg->cloud.header.stamp.sec = time;
-  msg->cloud.header.stamp.nanosec = 0;
+
+  msg->header.stamp = rclcpp::Time(static_cast<int64_t>(time * 1e9), RCL_ROS_TIME);
+
   msg->cloud.header.frame_id = frame_id;
 
   // Fill in faces.
@@ -246,8 +249,9 @@ void publishDepthMap(const image_transport::CameraPublisher& pub,
                      const cv::Mat1f& depth_est) {
   // Publish depthmap.
   std_msgs::msg::Header header;
-  header.stamp.sec = time;
-  header.stamp.nanosec = 0;
+
+  header.stamp = rclcpp::Time(static_cast<int64_t>(time * 1e9), RCL_ROS_TIME);
+
   header.frame_id = frame_id;
 
   sensor_msgs::msg::CameraInfo::SharedPtr cinfo(new sensor_msgs::msg::CameraInfo);
@@ -320,8 +324,9 @@ void publishPointCloud(mrs_lib::PublisherHandler<sensor_msgs::msg::PointCloud2>&
   pcl::toROSMsg(cloud, *msg);
 
   msg->header = std_msgs::msg::Header();
-  msg->header.stamp.sec = time;
-  msg->header.stamp.nanosec = 0;
+
+  msg->header.stamp = rclcpp::Time(static_cast<int64_t>(time * 1e9), RCL_ROS_TIME);
+
   msg->header.frame_id = frame_id;
 
   pub.publish(*msg);

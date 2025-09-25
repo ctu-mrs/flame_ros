@@ -4,7 +4,7 @@
 
 namespace flame_ros {
 
-FlameRos::FlameRos(const rclcpp::NodeOptions & options) : 
+FlameRos::FlameRos(const rclcpp::NodeOptions & options) :
   rclcpp::Node(NODE_NAME, options),
   is_initialized_(false),
   tf_buffer_(get_clock()),
@@ -236,45 +236,45 @@ void FlameRos::timerInitialization() {
   it_ = std::make_shared<image_transport::ImageTransport>(shared_from_this());
 
   if (publish_idepthmap_) {
-    idepth_pub_ = it_->advertiseCamera("idepth_registered/image_rect", 5);
+    idepth_pub_ = it_->advertiseCamera("~/idepth_registered/image_rect_out", 5);
   }
   if (publish_depthmap_) {
-    depth_pub_ = it_->advertiseCamera("depth_registered/image_rect", 5);
+    depth_pub_ = it_->advertiseCamera("~/depth_registered/image_rect_out", 5);
   }
   if (publish_features_) {
-    features_pub_ = it_->advertiseCamera("depth_registered_raw/image_rect", 5);
+    features_pub_ = it_->advertiseCamera("~/depth_registered_raw/image_rect_out", 5);
   }
   if (publish_mesh_) {
-    mesh_pub_ = mrs_lib::PublisherHandler<pcl_msgs::msg::PolygonMesh>(shared_from_this(), "mesh");
+    mesh_pub_ = mrs_lib::PublisherHandler<pcl_msgs::msg::PolygonMesh>(shared_from_this(), "~/mesh_out");
   }
   if (publish_cloud_) {
     //cloud_pub_ = nh.advertise<sensor_msgs::PointCloud2>("cloud", 5);
-    cloud_pub_ = mrs_lib::PublisherHandler<sensor_msgs::msg::PointCloud2>(shared_from_this(), "cloud");
+    cloud_pub_ = mrs_lib::PublisherHandler<sensor_msgs::msg::PointCloud2>(shared_from_this(), "~/cloud_out");
   }
   if (publish_stats_) {
     //stats_pub_ = nh.advertise<FlameStats>("stats", 5);
-    stats_pub_ = mrs_lib::PublisherHandler<flame_ros_msgs::msg::FlameStats>(shared_from_this(), "stats");
+    stats_pub_ = mrs_lib::PublisherHandler<flame_ros_msgs::msg::FlameStats>(shared_from_this(), "~/stats_out");
     //nodelet_stats_pub_ = nh.advertise<FlameNodeletStats>("nodelet_stats", 5);
-    nodelet_stats_pub_ = mrs_lib::PublisherHandler<flame_ros_msgs::msg::FlameNodeletStats>(shared_from_this(), "nodelet_stats");
+    nodelet_stats_pub_ = mrs_lib::PublisherHandler<flame_ros_msgs::msg::FlameNodeletStats>(shared_from_this(), "~/nodelet_stats_out");
   }
 
   if (params_.debug_draw_wireframe) {
-    debug_wireframe_pub_ = it_->advertise("debug/wireframe", 1);
+    debug_wireframe_pub_ = it_->advertise("~/debug/wireframe", 1);
   }
   if (params_.debug_draw_features) {
-    debug_features_pub_ = it_->advertise("debug/features", 1);
+    debug_features_pub_ = it_->advertise("~/debug/features", 1);
   }
   if (params_.debug_draw_detections) {
-    debug_detections_pub_ = it_->advertise("debug/detections", 1);
+    debug_detections_pub_ = it_->advertise("~/debug/detections", 1);
   }
   if (params_.debug_draw_matches) {
-    debug_matches_pub_ = it_->advertise("debug/matches", 1);
+    debug_matches_pub_ = it_->advertise("~/debug/matches", 1);
   }
   if (params_.debug_draw_normals) {
-    debug_normals_pub_ = it_->advertise("debug/normals", 1);
+    debug_normals_pub_ = it_->advertise("~/debug/normals", 1);
   }
   if (params_.debug_draw_idepthmap) {
-    debug_idepthmap_pub_ = it_->advertise("debug/idepthmap", 1);
+    debug_idepthmap_pub_ = it_->advertise("~/debug/idepthmap", 1);
   }
 
   is_initialized_ = true;
@@ -459,6 +459,9 @@ void FlameRos::processFrame(const uint32_t img_id, const double time,
     std::vector<bool> tri_validity;
     sensor_->getInverseDepthMesh(&vtx, &idepths, &normals, &triangles,
                                   &tri_validity, &edges);
+
+    RCLCPP_INFO(get_logger(), "pubing mesh=%.3f", time);
+
     publishDepthMesh(mesh_pub_, camera_frame_id_, time, Kinv_, vtx,
                       idepths, normals, triangles, tri_validity, rgb);
   }
@@ -658,6 +661,7 @@ void FlameRos::main() {
         // Eat data.
         // processFrame(frame.id, frame.time, Sophus::SE3f(frame.quat, frame.trans),
         //              frame.img);
+
         processFrame(frame_count++, frame.time, Sophus::SE3f(frame.quat, frame.trans),
                      frame.img);
       }

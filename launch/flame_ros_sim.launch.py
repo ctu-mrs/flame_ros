@@ -6,8 +6,22 @@ from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.substitutions import FindPackageShare
 from mrs_lib.remappings_custom_config_parser import RemappingsCustomConfigParser
 
+import launch
+
+import os
+
 def generate_launch_description():
-    
+
+    ld = launch.LaunchDescription()
+
+    uav_name = LaunchConfiguration('uav_name')
+
+    ld.add_action(DeclareLaunchArgument(
+        'uav_name',
+        default_value=os.getenv('UAV_NAME', "uav1"),
+        description="The uav name used for namespacing.",
+    ))
+
     custom_config = DeclareLaunchArgument(
         'custom_config',
         default_value=PathJoinSubstitution([
@@ -17,37 +31,61 @@ def generate_launch_description():
         ]),
         description='Path to the FLAME configuration file'
     )
-    
+
+    ld.add_action(custom_config)
+
     node = ComposableNode(
         package='flame_ros',
         plugin='flame_ros::FlameRos',
-        name='flame_ros',
-        namespace='uav1',
-        parameters=[{'use_sim_time': True},
-                    LaunchConfiguration('custom_config'),
-                    {'input': {'use_poseframe_updates': False}}],
-        # ..
-        extra_arguments=[{'use_intra_process_comms': True}],
-        remappings=[('/uav1/image_raw', '/uav1/stereo/left/image_mono'),
-                    ('/uav1/camera_info', '/uav1/stereo/left/camera_info'),
-                    ('/uav1/odom', '/uav1/odomimu')]
+        name='flame',
+        namespace=uav_name,
+        parameters=[
+            {"use_sim_time": True},
+            LaunchConfiguration('custom_config')
+        ],
+        remappings=[
+            # subscribers
+            ('~/image_in', 'stereo/left/image_raw'),
+            ('~/camera_info', 'stereo/left/camera_info'),
+            # publishers
+            ('~/mesh_out', '~/mesh'),
+            ('~/cloud_out', '~/cloud'),
+            ('~/stats_out', '~/stats'),
+            ('~/nodelet_stats_out', '~/nodelet_stats'),
+            # image publishers
+            ('~/debug/wireframe', '~/debug/wireframe'),
+            ('~/debug/features', '~/debug/features'),
+            ('~/debug/directions', '~/debug/directions'),
+            ('~/debug/matches', '~/debug/matches'),
+            ('~/debug/normals', '~/debug/normals'),
+            ('~/debug/idepthmap', '~/debug/idepthmap'),
+            ('~/idepth_registered/image_rect', '~/idepth_registered/image_rect'),
+            ('~/depth_registered/image_rect', '~/depth_registered/image_rect'),
+            ('~/depth_registered_raw/image_rect', '~/depth_registered_raw/image_rect'),
+            ]
     )
-    
+
     parser = RemappingsCustomConfigParser(node, LaunchConfiguration('custom_config'))
-    
+
+    # #{ container
+
     container = ComposableNodeContainer(
         name='flame_container',
-        namespace='',
+        namespace=uav_name,
         package='rclcpp_components',
-        executable='component_container',
+        executable='component_container_mt',
         #prefix='xterm -e gdb -ex run --args',
         #prefix='gdb -ex run --args',
-        composable_node_descriptions=[node]
+        composable_node_descriptions=[node],
+        parameters=[
+            {'use_intra_process_comms': True},
+            {'thread_num': os.cpu_count()},
+            {'use_sim_time': True},
+        ],
     )
-    
-    return LaunchDescription([
-        custom_config,
-        parser,
-        container,
-    ])
 
+    ld.add_action(container)
+
+    # #} end of container
+
+    return ld
