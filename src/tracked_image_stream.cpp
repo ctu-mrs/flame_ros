@@ -32,8 +32,6 @@
 
 #include "ros_sensor_streams/conversions.h"
 
-#include <mrs_lib/attitude_converter.h>
-
 namespace ros_sensor_streams {
 
 TrackedImageStream::TrackedImageStream(const std::string& world_frame_id,
