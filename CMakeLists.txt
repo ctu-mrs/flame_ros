@@ -26,24 +26,16 @@ set(DEPENDENCIES
   pcl_msgs
   pcl_conversions
   flame_ros_msgs
-  pluginlib
-  rviz_common
+  Eigen3
   )
 
-set(EXECUTABLES
-  flame_ros
+set(LIBRARIES
+  FlameRos_Flame
   )
 
 foreach(DEP IN LISTS DEPENDENCIES)
   find_package(${DEP} REQUIRED)
 endforeach()
-
-# Handle Eigen3 and OpenCV separately (like in the working example)
-#find_package(Eigen3 REQUIRED)
-# pkg_check_modules(EIGEN3 REQUIRED eigen3>=3.2)
-find_package(Eigen3 REQUIRED)
-find_package(OpenCV REQUIRED)
-find_package(OGRE REQUIRED)
 
 set(Sophus_INCLUDE_DIRS /opt/ros/jazzy/include)
 
@@ -52,7 +44,6 @@ include_directories(
   ${rclcpp_INCLUDE_DIRS}
   ${OpenCV_INCLUDE_DIRS}
   ${Sophus_INCLUDE_DIRS}
-  ${EIGEN3_INCLUDE_DIRS}
   ${cv_bridge_INCLUDE_DIRS}
   ${flame_INCLUDE_DIRS}
   ${PCL_INCLUDE_DIRS}
@@ -66,26 +57,25 @@ include_directories(
 
 ## | ----------------------- Flame ROS ---------------------- |
 
-add_library(${PROJECT_NAME}_component SHARED
+add_library(FlameRos_Flame SHARED
   src/flame_ros.cpp
   src/tracked_image_stream.cpp
   src/utils.cpp
 )
 
 rclcpp_components_register_node(
-    ${PROJECT_NAME}_component
+    FlameRos_Flame
     PLUGIN "flame_ros::FlameRos"
     EXECUTABLE ${PROJECT_NAME}
 )
 
 # Apply dependencies to the target
-ament_target_dependencies(${PROJECT_NAME}_component
+ament_target_dependencies(FlameRos_Flame
   ${DEPENDENCIES}
-  Eigen3
 )
 
 # Link OpenCV libraries
-target_link_libraries(${PROJECT_NAME}_component
+target_link_libraries(FlameRos_Flame
   ${OpenCV_LIBRARIES}
   ${PCL_LIBRARIES}
   ${flame_LIBRARIES}
@@ -96,7 +86,11 @@ target_link_libraries(${PROJECT_NAME}_component
 ## |                       install                              |
 ## --------------------------------------------------------------
 
-install(TARGETS ${PROJECT_NAME}_component
+ament_export_libraries(
+  ${LIBRARIES}
+  )
+
+install(TARGETS ${LIBRARIES}
   EXPORT export_${PROJECT_NAME}
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
@@ -113,17 +107,22 @@ install(
   DESTINATION share/${PROJECT_NAME}
 )
 
+install(
+  DIRECTORY tmux
+  USE_SOURCE_PERMISSIONS
+  DESTINATION share/${PROJECT_NAME}
+)
+
 ament_export_include_directories(
   include
 )
 
 ament_export_targets(
-  export_${PROJECT_NAME}
-)
+  export_${PROJECT_NAME} HAS_LIBRARY_TARGET
+  )
 
 ament_export_dependencies(
   ${DEPENDENCIES}
-  Eigen3
 )
 
 ament_package()

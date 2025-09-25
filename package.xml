@@ -24,11 +24,7 @@
   <depend>nav_msgs</depend>
   <depend>pcl_msgs</depend>
   <depend>flame_ros_msgs</depend>
-  <depend>rviz_common</depend>
-  <depend>pluginlib</depend>
-
-  <depend>eigen3_cmake_module</depend>
-  <build_depend>eigen</build_depend>
+  <depend>eigen</depend>
   <depend>sophus</depend>
   <depend>flame</depend>
   <depend>libpcl-all-dev</depend>
@@ -36,6 +32,5 @@
 
   <export>
     <build_type>ament_cmake</build_type>
-    <!--<rviz plugin="rviz_common_plugins.xml"/>-->
   </export>
 </package>
