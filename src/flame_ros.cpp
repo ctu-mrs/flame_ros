@@ -460,8 +460,6 @@ void FlameRos::processFrame(const uint32_t img_id, const double time,
     sensor_->getInverseDepthMesh(&vtx, &idepths, &normals, &triangles,
                                   &tri_validity, &edges);
 
-    RCLCPP_INFO(get_logger(), "pubing mesh=%.3f", time);
-
     publishDepthMesh(mesh_pub_, camera_frame_id_, time, Kinv_, vtx,
                       idepths, normals, triangles, tri_validity, rgb);
   }
