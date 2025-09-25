@@ -22,7 +22,7 @@ def generate_launch_description():
         description="The uav name used for namespacing.",
     ))
 
-    custom_config = DeclareLaunchArgument(
+    ld.add_action(DeclareLaunchArgument(
         'custom_config',
         default_value=PathJoinSubstitution([
             FindPackageShare('flame_ros'),
@@ -30,9 +30,13 @@ def generate_launch_description():
             'flame_component_sim.yaml'
         ]),
         description='Path to the FLAME configuration file'
-    )
-
-    ld.add_action(custom_config)
+    ))
+    
+    ld.add_action(DeclareLaunchArgument(
+        'cam_type',
+        default_value='rgb',
+        description='Path to the FLAME configuration file'
+    ))
 
     node = ComposableNode(
         package='flame_ros',
@@ -45,8 +49,8 @@ def generate_launch_description():
         ],
         remappings=[
             # subscribers
-            ('~/image_in', 'stereo/left/image_raw'),
-            ('~/camera_info', 'stereo/left/camera_info'),
+            ('~/image_in', [LaunchConfiguration('cam_type'), '/image_raw']),
+            ('~/camera_info', [LaunchConfiguration('cam_type'), '/camera_info']),
             # publishers
             ('~/mesh_out', '~/mesh'),
             ('~/cloud_out', '~/cloud'),
@@ -65,7 +69,7 @@ def generate_launch_description():
             ]
     )
 
-    parser = RemappingsCustomConfigParser(node, LaunchConfiguration('custom_config'))
+    ld.add_action(RemappingsCustomConfigParser(node, LaunchConfiguration('custom_config')))
 
     # #{ container
 

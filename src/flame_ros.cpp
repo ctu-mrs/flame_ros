@@ -30,7 +30,7 @@ void FlameRos::timerInitialization() {
   //tf_listener_ = std::make_shared<tf2_ros::TransformListener>(tf_buffer_);
 
   /*==================== Input Params ====================*/
-  param_loader.loadParam("input.camera_frame_id", camera_frame_id_);
+  //param_loader.loadParam("input.camera_frame_id", camera_frame_id_);
   param_loader.loadParam("input.camera_world_frame_id", camera_world_frame_id_);
   param_loader.loadParam("input.subsample_factor", subsample_factor_);
   param_loader.loadParam("input.poseframe_subsample_factor", poseframe_subsample_factor_);
@@ -292,6 +292,11 @@ void FlameRos::timerInitialization() {
 void FlameRos::poseframeCallback(const nav_msgs::msg::Path::ConstSharedPtr msg) {
     CHECK_INIT
 
+    if(camera_frame_id_.empty()){
+      RCLCPP_WARN(get_logger(), "cam frame id was not obtained yet");
+      return;
+    }
+
     pose_frame_id++;
     if(!params_.debug_quiet) RCLCPP_INFO(get_logger(), "FlameRos: Got a poseframe message!\n");
     RCLCPP_INFO(get_logger(), "FlameRos: Got a poseframe message!\n");
@@ -405,7 +410,7 @@ void FlameRos::odomCallback(const nav_msgs::msg::Odometry::ConstSharedPtr odom_m
   poseframeCallback(odom_path);
 }
 
-void FlameRos::processFrame(const uint32_t img_id, const double time,
+void FlameRos::processFrame(const uint32_t img_id, const std::string& cam_frame_id, const double time,
                   const Sophus::SE3f& pose, const cv::Mat3b& rgb) {
   stats_.tick("process_frame");
 
@@ -460,7 +465,7 @@ void FlameRos::processFrame(const uint32_t img_id, const double time,
     sensor_->getInverseDepthMesh(&vtx, &idepths, &normals, &triangles,
                                   &tri_validity, &edges);
 
-    publishDepthMesh(mesh_pub_, camera_frame_id_, time, Kinv_, vtx,
+    publishDepthMesh(mesh_pub_, cam_frame_id, time, Kinv_, vtx,
                       idepths, normals, triangles, tri_validity, rgb);
   }
 
@@ -470,7 +475,7 @@ void FlameRos::processFrame(const uint32_t img_id, const double time,
 
     if (publish_idepthmap_) {
       // Publish full idepthmap.
-      publishDepthMap(idepth_pub_, camera_frame_id_, time, input_->K(),
+      publishDepthMap(idepth_pub_, cam_frame_id, time, input_->K(),
                       sensor_->getInverseDepthMap());
     }
 
@@ -660,7 +665,7 @@ void FlameRos::main() {
         // processFrame(frame.id, frame.time, Sophus::SE3f(frame.quat, frame.trans),
         //              frame.img);
 
-        processFrame(frame_count++, frame.time, Sophus::SE3f(frame.quat, frame.trans),
+        processFrame(frame_count++, frame.cam_frame_id, frame.time, Sophus::SE3f(frame.quat, frame.trans),
                      frame.img);
       }
 

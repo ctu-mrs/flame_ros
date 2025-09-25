@@ -64,6 +64,7 @@ class TrackedImageStream final  {
    */
   struct Frame {
     uint32_t id; // Image ID.
+    std::string cam_frame_id;
     double time; // Timestamp.
     Eigen::Quaternionf quat; // Orientation as quaternion.
     Eigen::Vector3f trans; // Translsation.

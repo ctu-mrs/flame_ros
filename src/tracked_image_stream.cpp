@@ -32,6 +32,8 @@
 
 #include "ros_sensor_streams/conversions.h"
 
+#include <mrs_lib/attitude_converter.h>
+
 namespace ros_sensor_streams {
 
 TrackedImageStream::TrackedImageStream(const std::string& world_frame_id,
@@ -195,6 +197,7 @@ void TrackedImageStream::callback(const std::shared_ptr<const sensor_msgs::msg::
 
   Frame frame;
   frame.id = frame_counter++; // header.seq field was dropped in ROS2 implementation, we have to replace it by counter
+  frame.cam_frame_id = live_frame_id_;
   frame.time = rclcpp::Time(rgb_msg->header.stamp).seconds();
   frame.quat = pose.unit_quaternion();
   frame.trans = pose.translation();

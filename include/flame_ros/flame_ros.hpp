@@ -74,7 +74,7 @@ class FlameRos : public rclcpp::Node
     void poseframeCallback(const nav_msgs::msg::Path::ConstSharedPtr msg);
     void append_odom_to_path(nav_msgs::msg::Odometry::ConstSharedPtr odom_msg);
     void odomCallback(const nav_msgs::msg::Odometry::ConstSharedPtr odom_msg);
-    void processFrame(const uint32_t img_id, const double time, const Sophus::SE3f& pose, const cv::Mat3b& rgb);
+    void processFrame(const uint32_t img_id, const std::string& cam_frame_id, const double time, const Sophus::SE3f& pose, const cv::Mat3b& rgb);
     void main();
 
     // // Convenience alias.
