@@ -312,7 +312,7 @@ void FlameRos::timerInitialization() {
   timer_initialization_->cancel();
 
   // Kick off main thread.
-  thread_ = std::thread(&FlameRos::main, this);
+  //thread_ = std::thread(&FlameRos::main, this);
 
   RCLCPP_INFO(get_logger(), "flame_ros constructed");
 }
@@ -361,6 +361,19 @@ void FlameRos::callback(const std::shared_ptr<const sensor_msgs::msg::Image>& rg
     inited_ = true;
 
     RCLCPP_DEBUG(get_logger(), "Set camera calibration!");
+
+    Kinv_ = K_.inverse();
+
+    // Initialize depth sensor.
+    if(!params_.debug_quiet) RCLCPP_INFO(get_logger(), "FlameRos: Constructing Flame...\n");
+    sensor_ = std::make_shared<flame::Flame>(width_,
+                                             height_,
+                                             K_,
+                                             Kinv_,
+                                             params_);
+
+    /*==================== Enter main loop ====================*/
+    if(!params_.debug_quiet) RCLCPP_INFO(get_logger(), "FlameRos: Done. We are GO for launch!\n");
   }
 
   if (undistort_) {
@@ -738,26 +751,26 @@ void FlameRos::processFrame(const uint32_t img_id, const std::string& cam_frame_
   /**
    * \brief Main processing loop.
    */
-void FlameRos::main() {
-    // Wait until input is initialized.
-    if(!params_.debug_quiet) RCLCPP_INFO(get_logger(), "FlameRos: Waiting for calibration...\n");
+// void FlameRos::main() {
+//     // Wait until input is initialized.
+//     if(!params_.debug_quiet) RCLCPP_INFO(get_logger(), "FlameRos: Waiting for calibration...\n");
 
-    while (!inited_) {
-      std::this_thread::yield();
-    }
+//     while (!inited_) {
+//       std::this_thread::yield();
+//     }
 
-    Kinv_ = K_.inverse();
+    // Kinv_ = K_.inverse();
 
-    // Initialize depth sensor.
-    if(!params_.debug_quiet) RCLCPP_INFO(get_logger(), "FlameRos: Constructing Flame...\n");
-    sensor_ = std::make_shared<flame::Flame>(width_,
-                                             height_,
-                                             K_,
-                                             Kinv_,
-                                             params_);
+    // // Initialize depth sensor.
+    // if(!params_.debug_quiet) RCLCPP_INFO(get_logger(), "FlameRos: Constructing Flame...\n");
+    // sensor_ = std::make_shared<flame::Flame>(width_,
+    //                                          height_,
+    //                                          K_,
+    //                                          Kinv_,
+    //                                          params_);
 
-    /*==================== Enter main loop ====================*/
-    if(!params_.debug_quiet) RCLCPP_INFO(get_logger(), "FlameRos: Done. We are GO for launch!\n");
+    // /*==================== Enter main loop ====================*/
+    // if(!params_.debug_quiet) RCLCPP_INFO(get_logger(), "FlameRos: Done. We are GO for launch!\n");
     
     //unsigned int frame_count = 0;
 
@@ -852,8 +865,8 @@ void FlameRos::main() {
 //       num_imgs_++;
 //     }
 
-    return;
-}
+//     return;
+// }
 
 } // namespace flame_ros
 
