@@ -9,7 +9,22 @@ FlameRos::FlameRos(const rclcpp::NodeOptions & options) :
   is_initialized_(false),
   tf_buffer_(get_clock()),
   odom_path(nullptr),
-  pose_frame_id(0)
+  pose_frame_id(0),
+  // originally from tracked_image_stream.cpp
+  inited_(false),
+  use_external_cal_(false),
+  resize_factor_(1),
+  undistort_(false),
+  //world_frame_id_(world_frame_id),
+  live_frame_id_(),
+  width_(0),
+  height_(0),
+  K_(),
+  D_(5),
+  tf_listener_(nullptr),
+  // tf_buffer_(get_clock()),
+  // image_transport_(std::make_unique<image_transport::ImageTransport>(nh_)),
+  cam_sub_()
 {
   timer_initialization_ = create_wall_timer(std::chrono::duration<double>(1.0), std::bind(&FlameRos::timerInitialization, this));
 }
@@ -19,6 +34,9 @@ void FlameRos::timerInitialization() {
   // std::signal(SIGILL, crash_handler);
   // std::signal(SIGABRT, crash_handler);
   // std::signal(SIGFPE, crash_handler);
+
+  //tf_buffer_ = std::make_shared<tf2_ros::Buffer>(get_clock());
+  image_transport_ = std::make_unique<image_transport::ImageTransport>(shared_from_this());
 
   mrs_lib::ParamLoader param_loader(shared_from_this(), NODE_NAME);
 
@@ -200,8 +218,21 @@ void FlameRos::timerInitialization() {
   FLAME_ASSERT(resize_factor_ == 1);
 
   // Setup input stream.
-  input_ = std::make_shared<ros_sensor_streams::
-                            TrackedImageStream>(camera_world_frame_id_, shared_from_this());
+  //input_ = std::make_shared<ros_sensor_streams::
+  //                          TrackedImageStream>(camera_world_frame_id_, shared_from_this());
+    // Subscribe to topics.
+  //image_transport::ImageTransport it_(shared_from_this());
+  it_ = std::make_shared<image_transport::ImageTransport>(shared_from_this());
+  image_transport_.reset(new image_transport::ImageTransport(shared_from_this()));
+
+  cam_sub_ = image_transport_->subscribeCamera(std::string("~/image_in"), 10,
+                                                [this](const sensor_msgs::msg::Image::ConstSharedPtr& img,
+                                                       const sensor_msgs::msg::CameraInfo::ConstSharedPtr& info) {
+                                                 this->callback(img, info);
+                                             });
+
+  // Set up tf.
+  tf_listener_.reset(new tf2_ros::TransformListener(tf_buffer_));
 #endif
 
   pfs_inited_ = true; // Default values.
@@ -233,7 +264,7 @@ void FlameRos::timerInitialization() {
   // Set up publishers. For some reason this appears to take a while.
   if(!params_.debug_quiet) RCLCPP_INFO(get_logger(), "FlameRos: Setting up publishers...\n");
 
-  it_ = std::make_shared<image_transport::ImageTransport>(shared_from_this());
+  //it_ = std::make_shared<image_transport::ImageTransport>(shared_from_this());
 
   if (publish_idepthmap_) {
     idepth_pub_ = it_->advertiseCamera("~/idepth_registered/image_rect_out", 5);
@@ -284,6 +315,96 @@ void FlameRos::timerInitialization() {
   thread_ = std::thread(&FlameRos::main, this);
 
   RCLCPP_INFO(get_logger(), "flame_ros constructed");
+}
+
+void FlameRos::callback(const std::shared_ptr<const sensor_msgs::msg::Image>& rgb_msg,
+                                  const std::shared_ptr<const sensor_msgs::msg::CameraInfo>& info) {
+  RCLCPP_DEBUG(get_logger(), "Received image data!");
+
+  // Grab rgb data.
+  cv::Mat3b rgb = cv_bridge::toCvCopy(rgb_msg, "bgr8")->image;
+
+  assert(rgb.isContinuous());
+
+  if (resize_factor_ != 1) {
+    cv::Mat3b resized_rgb(static_cast<float>(rgb.rows)/resize_factor_,
+                          static_cast<float>(rgb.cols)/resize_factor_);
+    cv::resize(rgb, resized_rgb, resized_rgb.size());
+    rgb = resized_rgb;
+  }
+
+  if (!inited_) {
+    live_frame_id_ = rgb_msg->header.frame_id;
+
+    // Set calibration.
+    width_ = rgb.cols;
+    height_ = rgb.rows;
+
+    if (!use_external_cal_) {
+      for (int ii = 0; ii < 3; ++ii) {
+        for (int jj = 0; jj < 3; ++jj) {
+          K_(ii, jj) = info->p[ii*4 + jj];
+        }
+      }
+
+      if (K_(0, 0) <= 0) {
+        RCLCPP_ERROR(get_logger(), "Camera intrinsics matrix is probably invalid!\n");
+        RCLCPP_ERROR_STREAM(get_logger(), "K = " << std::endl << K_);
+        return;
+      }
+
+      for (int ii = 0; ii < 5; ++ii) {
+        D_(ii) = info->d[ii];
+      }
+    }
+
+    inited_ = true;
+
+    RCLCPP_DEBUG(get_logger(), "Set camera calibration!");
+  }
+
+  if (undistort_) {
+    cv::Mat1f Kcv, Dcv;
+    cv::eigen2cv(K_, Kcv);
+    cv::eigen2cv(D_, Dcv);
+    cv::Mat3b rgb_undistorted;
+    cv::undistort(rgb, rgb_undistorted, Kcv, Dcv);
+    rgb = rgb_undistorted;
+  }
+
+  // Get pose of camera.
+  geometry_msgs::msg::TransformStamped tf;
+  try {
+    // Need to remove leading "/" if it exists.
+    std::string rgb_frame_id = rgb_msg->header.frame_id;
+    if (rgb_frame_id[0] == '/') {
+      rgb_frame_id = rgb_frame_id.substr(1, rgb_frame_id.size()-1);
+    }
+
+    tf = tf_buffer_.lookupTransform(camera_world_frame_id_, rgb_frame_id,
+                                    rclcpp::Time(rgb_msg->header.stamp),
+                                    rclcpp::Duration(1.0/10, 0));
+  } catch (tf2::TransformException &ex) {
+    RCLCPP_ERROR(get_logger(), "%s", ex.what());
+    return;
+  }
+
+  Sophus::SE3f pose;
+
+  ros_sensor_streams::tfToSophusSE3<float>(tf.transform, &pose);
+
+  // Frame frame;
+  // frame.id = frame_counter++; // header.seq field was dropped in ROS2 implementation, we have to replace it by counter
+  // frame.cam_frame_id = live_frame_id_;
+  // frame.time = rclcpp::Time(rgb_msg->header.stamp).seconds();
+  // frame.quat = pose.unit_quaternion();
+  // frame.trans = pose.translation();
+  // frame.img = rgb;
+
+  processFrame(frame_counter++, live_frame_id_, rclcpp::Time(rgb_msg->header.stamp).seconds(), Sophus::SE3f(pose.unit_quaternion(), pose.translation()),
+                     rgb);
+
+  return;
 }
 
   /**
@@ -475,7 +596,7 @@ void FlameRos::processFrame(const uint32_t img_id, const std::string& cam_frame_
 
     if (publish_idepthmap_) {
       // Publish full idepthmap.
-      publishDepthMap(idepth_pub_, cam_frame_id, time, input_->K(),
+      publishDepthMap(idepth_pub_, cam_frame_id, time, K_,
                       sensor_->getInverseDepthMap());
     }
 
@@ -493,14 +614,14 @@ void FlameRos::processFrame(const uint32_t img_id, const std::string& cam_frame_
     }
 
     if (publish_depthmap_) {
-      publishDepthMap(depth_pub_, input_->live_frame_id(), time, input_->K(),
+      publishDepthMap(depth_pub_, live_frame_id_, time, K_,
                       depth_est);
     }
 
     if (publish_cloud_) {
       float max_depth = (params_.do_idepth_triangle_filter) ?
           1.0f / params_.min_triangle_idepth : std::numeric_limits<float>::max();
-      publishPointCloud(cloud_pub_, input_->live_frame_id(), time, input_->K(),
+      publishPointCloud(cloud_pub_, live_frame_id_, time, K_,
                         depth_est, 0.1f, max_depth);
     }
   }
@@ -530,7 +651,7 @@ void FlameRos::processFrame(const uint32_t img_id, const std::string& cam_frame_
       }
     }
 
-    publishDepthMap(features_pub_, input_->live_frame_id(), time, input_->K(),
+    publishDepthMap(features_pub_, live_frame_id_, time, K_,
                     depth_raw);
   }
 
@@ -556,7 +677,7 @@ void FlameRos::processFrame(const uint32_t img_id, const std::string& cam_frame_
   std_msgs::msg::Header hdr;
   hdr.stamp.sec = time;
   hdr.stamp.nanosec = 0;
-  hdr.frame_id = input_->live_frame_id();
+  hdr.frame_id = live_frame_id_;
 
   if (params_.debug_draw_wireframe) {
     sensor_msgs::msg::Image::ConstSharedPtr debug_img_msg =
@@ -621,115 +742,115 @@ void FlameRos::main() {
     // Wait until input is initialized.
     if(!params_.debug_quiet) RCLCPP_INFO(get_logger(), "FlameRos: Waiting for calibration...\n");
 
-    while (!input_->inited()) {
+    while (!inited_) {
       std::this_thread::yield();
     }
 
-    Kinv_ = input_->K().inverse();
+    Kinv_ = K_.inverse();
 
     // Initialize depth sensor.
     if(!params_.debug_quiet) RCLCPP_INFO(get_logger(), "FlameRos: Constructing Flame...\n");
-    sensor_ = std::make_shared<flame::Flame>(input_->width(),
-                                             input_->height(),
-                                             input_->K(),
+    sensor_ = std::make_shared<flame::Flame>(width_,
+                                             height_,
+                                             K_,
                                              Kinv_,
                                              params_);
 
     /*==================== Enter main loop ====================*/
     if(!params_.debug_quiet) RCLCPP_INFO(get_logger(), "FlameRos: Done. We are GO for launch!\n");
     
-    unsigned int frame_count = 0;
+    //unsigned int frame_count = 0;
 
-    while (rclcpp::ok()) {
-      stats_.tick("main");
+//     while (rclcpp::ok()) {
+//       stats_.tick("main");
 
-      // Wait for queue to have items.
-      stats_.set("queue_size", input_->queue().size());
-      stats_.tick("waiting");
-      std::unique_lock<std::recursive_mutex> lock(input_->queue().mutex());
-      input_->queue().non_empty().wait(lock, [this](){
-          return (input_->queue().size() > 0);
-        });
-      lock.unlock();
-      stats_.tock("waiting");
-      if(!params_.debug_quiet) RCLCPP_INFO(get_logger(),
-          "FlameRos/waiting = %4.1fms, queue_size = %i\n",
-          stats_.timings("waiting"),
-          static_cast<int>(stats_.stats("queue_size")));
+//       // Wait for queue to have items.
+//       stats_.set("queue_size", queue().size());
+//       stats_.tick("waiting");
+//       std::unique_lock<std::recursive_mutex> lock(queue().mutex());
+//       queue().non_empty().wait(lock, [this](){
+//           return (queue().size() > 0);
+//         });
+//       lock.unlock();
+//       stats_.tock("waiting");
+//       if(!params_.debug_quiet) RCLCPP_INFO(get_logger(),
+//           "FlameRos/waiting = %4.1fms, queue_size = %i\n",
+//           stats_.timings("waiting"),
+//           static_cast<int>(stats_.stats("queue_size")));
 
-      // Grab the first item in the queue.
-      Frame frame = input_->queue().front();
-      input_->queue().pop();
-      if ((pfs_inited_) && (num_imgs_ % subsample_factor_ == 0)) {
-        // Eat data.
-        // processFrame(frame.id, frame.time, Sophus::SE3f(frame.quat, frame.trans),
-        //              frame.img);
+//       // Grab the first item in the queue.
+//       Frame frame = queue().front();
+//       queue().pop();
+//       if ((pfs_inited_) && (num_imgs_ % subsample_factor_ == 0)) {
+//         // Eat data.
+//         // processFrame(frame.id, frame.time, Sophus::SE3f(frame.quat, frame.trans),
+//         //              frame.img);
 
-        processFrame(frame_count++, frame.cam_frame_id, frame.time, Sophus::SE3f(frame.quat, frame.trans),
-                     frame.img);
-      }
+//         processFrame(frame_count++, frame.cam_frame_id, frame.time, Sophus::SE3f(frame.quat, frame.trans),
+//                      frame.img);
+//       }
 
-      /*==================== Timing stuff ====================*/
-      // Compute two measures of throughput in Hz. The first is the actual number of
-      // frames per second, the second is the theoretical maximum fps based on the
-      // runtime. They are not necessarily the same - the former takes external
-      // latencies into account.
+//       /*==================== Timing stuff ====================*/
+//       // Compute two measures of throughput in Hz. The first is the actual number of
+//       // frames per second, the second is the theoretical maximum fps based on the
+//       // runtime. They are not necessarily the same - the former takes external
+//       // latencies into account.
 
-      // Compute maximum fps based on runtime.
-      double fps_max = 0.0f;
-      if (stats_.stats("fps_max") <= 0.0f) {
-        fps_max = 1000.0f / stats_.timings("main");
-      } else {
-        fps_max = 1.0f / (0.99 * 1.0f/stats_.stats("fps_max") +
-                          0.01 * stats_.timings("main")/1000.0f);
-      }
-      stats_.set("fps_max", fps_max);
+//       // Compute maximum fps based on runtime.
+//       double fps_max = 0.0f;
+//       if (stats_.stats("fps_max") <= 0.0f) {
+//         fps_max = 1000.0f / stats_.timings("main");
+//       } else {
+//         fps_max = 1.0f / (0.99 * 1.0f/stats_.stats("fps_max") +
+//                           0.01 * stats_.timings("main")/1000.0f);
+//       }
+//       stats_.set("fps_max", fps_max);
 
-      // Compute actual fps (overall throughput of system).
-      stats_.tock("fps");
-      double fps = 0.0;
-      if (stats_.stats("fps") <= 0.0f) {
-        fps = 1000.0f / stats_.timings("fps");
-      } else {
-        fps = 1.0f / (0.99 * 1.0f/stats_.stats("fps") +
-                      0.01 * stats_.timings("fps")/1000.0f);
-      }
-      stats_.set("fps", fps);
-      stats_.tick("fps");
+//       // Compute actual fps (overall throughput of system).
+//       stats_.tock("fps");
+//       double fps = 0.0;
+//       if (stats_.stats("fps") <= 0.0f) {
+//         fps = 1000.0f / stats_.timings("fps");
+//       } else {
+//         fps = 1.0f / (0.99 * 1.0f/stats_.stats("fps") +
+//                       0.01 * stats_.timings("fps")/1000.0f);
+//       }
+//       stats_.set("fps", fps);
+//       stats_.tick("fps");
 
-#ifdef FLAME_WITH_FLA
-      last_update_sec_ = get_clock()->now().seconds();
-#endif
+// #ifdef FLAME_WITH_FLA
+//       last_update_sec_ = get_clock()->now().seconds();
+// #endif
 
-      stats_.tock("main");
+//       stats_.tock("main");
 
-      if ((num_imgs_ % load_integration_factor_) == 0) {
-        // Compute load stats.
-        fu::Load max_load, sys_load, pid_load;
-        load_.get(&max_load, &sys_load, &pid_load);
-        stats_.set("max_load_cpu", max_load.cpu);
-        stats_.set("max_load_mem", max_load.mem);
-        stats_.set("max_load_swap", max_load.swap);
-        stats_.set("sys_load_cpu", sys_load.cpu);
-        stats_.set("sys_load_mem", sys_load.mem);
-        stats_.set("sys_load_swap", sys_load.swap);
-        stats_.set("pid_load_cpu", pid_load.cpu);
-        stats_.set("pid_load_mem", pid_load.mem);
-        stats_.set("pid_load_swap", pid_load.swap);
-        stats_.set("pid", getpid());
-      }
+//       if ((num_imgs_ % load_integration_factor_) == 0) {
+//         // Compute load stats.
+//         fu::Load max_load, sys_load, pid_load;
+//         load_.get(&max_load, &sys_load, &pid_load);
+//         stats_.set("max_load_cpu", max_load.cpu);
+//         stats_.set("max_load_mem", max_load.mem);
+//         stats_.set("max_load_swap", max_load.swap);
+//         stats_.set("sys_load_cpu", sys_load.cpu);
+//         stats_.set("sys_load_mem", sys_load.mem);
+//         stats_.set("sys_load_swap", sys_load.swap);
+//         stats_.set("pid_load_cpu", pid_load.cpu);
+//         stats_.set("pid_load_mem", pid_load.mem);
+//         stats_.set("pid_load_swap", pid_load.swap);
+//         stats_.set("pid", getpid());
+//       }
 
-      // publishFlameNodeletStats(nodelet_stats_pub_,
-      //                          frame.id, frame.time,
-      //                          stats_.stats(), stats_.timings());
+//       // publishFlameNodeletStats(nodelet_stats_pub_,
+//       //                          frame.id, frame.time,
+//       //                          stats_.stats(), stats_.timings());
 
-      if(!params_.debug_quiet) RCLCPP_INFO(get_logger(),
-        "FlameRos/main(%i/%u) = %4.1fms/%.1fHz (%.1fHz)\n",
-        num_imgs_, frame.id, stats_.timings("main"),
-        stats_.stats("fps_max"), stats_.stats("fps"));
+//       if(!params_.debug_quiet) RCLCPP_INFO(get_logger(),
+//         "FlameRos/main(%i/%u) = %4.1fms/%.1fHz (%.1fHz)\n",
+//         num_imgs_, frame.id, stats_.timings("main"),
+//         stats_.stats("fps_max"), stats_.stats("fps"));
 
-      num_imgs_++;
-    }
+//       num_imgs_++;
+//     }
 
     return;
 }

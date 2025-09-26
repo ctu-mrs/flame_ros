@@ -59,7 +59,7 @@ include_directories(
 
 add_library(FlameRos_Flame SHARED
   src/flame_ros.cpp
-  src/tracked_image_stream.cpp
+  #src/tracked_image_stream.cpp
   src/utils.cpp
 )
 

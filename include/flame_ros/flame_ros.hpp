@@ -5,7 +5,7 @@
 #include <mrs_lib/subscriber_handler.h>
 #include <mrs_lib/publisher_handler.h>
 
-#include <ros_sensor_streams/tracked_image_stream.h>
+//#include <ros_sensor_streams/tracked_image_stream.h>
 #include <ros_sensor_streams/conversions.h>
 
 #include <flame/utils/image_utils.h>
@@ -24,6 +24,38 @@
 #include <cv_bridge/cv_bridge.hpp>
 
 #include <flame_ros/utils.hpp>
+
+#include <opencv2/core/eigen.hpp>
+
+#include <rclcpp/rclcpp.hpp>
+
+#include <sophus/se3.hpp>
+
+#include <mrs_lib/attitude_converter.h>
+
+// ========================
+#include <memory>
+#include <string>
+
+#include <image_transport/image_transport.hpp>
+#include <image_transport/camera_subscriber.hpp>
+
+#include <tf2_ros/transform_listener.h>
+
+#include <sensor_msgs/msg/image.hpp>
+#include <sensor_msgs/msg/camera_info.hpp>
+
+#include <Eigen/Core>
+#include <Eigen/Geometry>
+
+#include <opencv2/core/core.hpp>
+
+#include <tf2_ros/buffer.h>
+
+#include <rclcpp/time.hpp>
+
+#include <opencv2/calib3d.hpp>
+
 
 namespace fu = flame::utils;
 
@@ -71,6 +103,7 @@ class FlameRos : public rclcpp::Node
     rclcpp::TimerBase::SharedPtr timer_initialization_;
     bool is_initialized_;
     void timerInitialization();
+    void callback(const std::shared_ptr<const sensor_msgs::msg::Image>& rgb_msg, const std::shared_ptr<const sensor_msgs::msg::CameraInfo>& info);
     void poseframeCallback(const nav_msgs::msg::Path::ConstSharedPtr msg);
     void append_odom_to_path(nav_msgs::msg::Odometry::ConstSharedPtr odom_msg);
     void odomCallback(const nav_msgs::msg::Odometry::ConstSharedPtr odom_msg);
@@ -78,7 +111,7 @@ class FlameRos : public rclcpp::Node
     void main();
 
     // // Convenience alias.
-    using Frame = ros_sensor_streams::TrackedImageStream::Frame;
+    //using Frame = ros_sensor_streams::TrackedImageStream::Frame;
 
     #ifdef FLAME_WITH_FLA
       enum Status {
@@ -111,8 +144,11 @@ class FlameRos : public rclcpp::Node
     int poseframe_subsample_factor_; // Create a poseframe every this number of images.
     int resize_factor_;
 
+    // Use an external calibration instead of what's in the camera_info message.
+    bool use_external_cal_;
+
     // Input stream object.
-    std::shared_ptr<ros_sensor_streams::TrackedImageStream> input_;
+    //std::shared_ptr<ros_sensor_streams::TrackedImageStream> input_;
     Eigen::Matrix3f Kinv_;
 
     // PoseFrame stuff.
@@ -183,6 +219,29 @@ class FlameRos : public rclcpp::Node
     // Messages in the ROS2 does not have "seq" field in the header.
     // We have to replace it by the counter in the subscriber.
     unsigned long int pose_frame_id;
+
+    bool inited_;
+
+    //int resize_factor_; // Factor to resize image. resize_factor_ = 2 will
+                        // downsample by 2 in each dimension.
+    bool undistort_; // Whether to undistort images.
+
+    std::string world_frame_id_;
+    std::string live_frame_id_;
+    int width_;
+    int height_;
+    Eigen::Matrix3f K_; // Camera intrinsics.
+    Eigen::VectorXf D_; // Distortion params: k1, k2, p1, p2, k3.
+
+    //std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
+    //tf2_ros::Buffer tf_buffer_;
+
+    std::shared_ptr<image_transport::ImageTransport> image_transport_;
+    image_transport::CameraSubscriber cam_sub_;
+
+    //ThreadSafeQueue<Frame> queue_;
+
+    long unsigned int frame_counter;
 };
 
 } // namespace flame_ros
