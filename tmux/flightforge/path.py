@@ -33,6 +33,7 @@ class Path(Node):
         request = PathSrv.Request()
         request.path.fly_now = True
         request.path.use_heading = True
+        request.path.loop = True
         request.path.header.frame_id = "fcu_untilted"
 
         p1 = Reference()

@@ -172,6 +172,8 @@ class FlameRos : public rclcpp::Node
     flame::Params params_;
     std::shared_ptr<flame::Flame> sensor_;
 
+    std::vector<uint32_t> poses_ids_;
+
     // Publishes mesh.
     bool publish_mesh_;
     ////ros::Publisher mesh_pub_;

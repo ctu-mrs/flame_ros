@@ -48,7 +48,7 @@ output:
   max_angular_rate: 0.0 # deg/sec
 
 debug:
-  wireframe: true # Mesh wireframe colored by idepth.
+  wireframe: false # Mesh wireframe colored by idepth.
   features: true # Features colored by idepth.
   detections: false # Feature detections
   matches: false # Epipolar line searches (green success, red failure).

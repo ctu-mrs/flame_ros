@@ -493,6 +493,7 @@ void FlameRos::poseframeCallback(const nav_msgs::msg::Path::ConstSharedPtr msg) 
     } else if ((sensor_ != nullptr) && pfs_inited_) {
       sensor_->updatePoseFramePoses(pf_ids, pf_poses);
       sensor_->prunePoseFrames(pf_ids);
+      RCLCPP_INFO(get_logger(), "pruning");
     }
 
     return;
@@ -559,11 +560,25 @@ void FlameRos::processFrame(const uint32_t img_id, const std::string& cam_frame_
   bool update_success = sensor_->update(time, img_id, pose, img_gray,
                                         is_poseframe, msg=msg);
 
+
   if (!update_success) {
     stats_.tock("process_frame");
     if(!params_.debug_quiet) RCLCPP_WARN(get_logger(), "FlameRos: Unsuccessful update. Reason: %s\n", msg.c_str());
     return;
   }
+
+  // | ------------------ custom pruning starts ----------------- |
+
+  poses_ids_.insert(poses_ids_.begin(), img_id);
+
+  if (poses_ids_.size() > 100) {
+
+    poses_ids_.pop_back();
+
+    sensor_->prunePoseFrames(poses_ids_);
+  }
+
+  // | ------------------- custom pruning ends ------------------ |
 
   if (max_angular_rate_ > 0.0f) {
     // Check angle difference between last and current pose. If we're rotating,

@@ -78,8 +78,10 @@ def generate_launch_description():
         namespace=uav_name,
         package='rclcpp_components',
         executable='component_container_mt',
+        output="screen",
         #prefix='xterm -e gdb -ex run --args',
-        #prefix='gdb -ex run --args',
+        # prefix='gdb -ex run --args',
+        # prefix='valgrind --tool=massif',
         composable_node_descriptions=[node],
         parameters=[
             {'use_intra_process_comms': True},
