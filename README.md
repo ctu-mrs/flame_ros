@@ -219,6 +219,161 @@ particularly important:
   and data-fitting in the regularizer. It should be set in relation to the
   detection window size. Some good values are 0.1-0.25.
 
+# Complete parameter list reference
+
+Mapping between ROS configuration parameters and algorithm parameters from the paper "FLaME: Fast Lightweight Mesh Estimation using Variational Smoothing on Delaunay Graphs" (Greene & Roy, ICCV 2017).
+
+## Feature Detection & Tracking
+
+### `features.detection.win_size` → Detail level L (Section 3.1)
+- **Units:** pixels
+- **Description:** Grid cell size is 2^L × 2^L pixels for feature sampling
+- **Example:** win_size=16 corresponds to L≈4, giving 16×16 pixel cells
+- **Effect:** Smaller L = denser features (higher quality, slower); Larger L = sparser features (faster, lower quality)
+
+### `features.detection.min_grad_mag` → Gradient threshold
+- **Units:** intensity (0-255 for grayscale)
+- **Config value:** 5.0
+- **Description:** Minimum image gradient magnitude for feature detection
+- **Typical range:** 3-15
+- **Effect:** Higher values = fewer but more trackable features
+
+### `features.tracking.win_size` → Patch matching window
+- **Units:** pixels
+- **Config value:** 5 (creates 5×5 pixel patch)
+- **Description:** Size of image patch used for epipolar line matching
+- **Typical range:** 3-9 pixels (must be odd)
+- **Effect:** Larger window = more robust but slower matching
+
+### `features.tracking.epipolar_line_var` → σ²_z (Equation 7)
+- **Units:** (1/meters)²
+- **Config value:** 10.0
+- **Description:** Noise variance for inverse depth measurements from stereo matching
+- **Effect:** Higher values = less trust in individual measurements, more reliance on smoothing
+- **Note:** High value (10.0) indicates very uncertain stereo matching, favoring aggressive smoothing
+
+## Graph Construction
+
+### `regularization.nltgv2.idepth_var_max` → σ²_max (Section 3.2)
+- **Units:** (1/meters)²
+- **Config value:** 0.01
+- **Description:** Maximum inverse depth variance before feature is added to mesh
+- **Effect:** Filters out uncertain depth estimates from graph optimization
+- **Example:** 0.01 accepts features with depth uncertainty ~±10cm at 1m distance
+
+## Optimization Parameters (Chambolle-Pock Algorithm)
+
+### `regularization.nltgv2.data_factor` → λ (Equation 15)
+- **Units:** dimensionless
+- **Config value:** 0.15
+- **Description:** Balance between data fidelity and smoothness in NLTGV²-L1 cost
+- **Typical range:** 0.1-0.35 (paper recommendation)
+- **Effect:** Higher = trust raw measurements more; Lower = smooth more aggressively
+
+### `regularization.nltgv2.step_x` → τ (Algorithm 2)
+- **Units:** dimensionless
+- **Config value:** 0.001
+- **Description:** Primal step size - how much vertex depths change per iteration
+- **Effect:** Too large = unstable; Too small = slow convergence
+- **Note:** Conservative value prioritizes stability over speed
+
+### `regularization.nltgv2.step_q` → σ (Algorithm 2)
+- **Units:** dimensionless
+- **Config value:** 125.0
+- **Description:** Dual step size - how aggressively smoothness constraint penalties update
+- **Constraint:** Must satisfy στ < 1 (here: 125.0 × 0.001 = 0.125 ✓)
+- **Note:** Dual steps can be much larger than primal steps
+
+### `regularization.nltgv2.theta` → θ (Algorithm 2)
+- **Units:** dimensionless
+- **Config value:** 0.25
+- **Description:** Extrapolation/momentum parameter for accelerated convergence
+- **Range:** [0, 1] where 0 = no acceleration, 1 = maximum acceleration
+- **Effect:** Higher = faster convergence but less stable
+
+## Edge Weights (hardcoded in implementation)
+
+### `e_α = 1/||v_i_u - v_j_u||²` → α weights (Equation 11)
+- **Units:** 1/pixels²
+- **Description:** First-order smoothness weights, inversely proportional to edge length
+- **Example:** 5-pixel edge → weight = 0.04; 50-pixel edge → weight = 0.0004
+- **Effect:** Shorter edges have stronger influence on planar smoothing
+
+### `e_β = 1` → β weights (Equation 12)
+- **Units:** dimensionless
+- **Description:** Second-order smoothness weights (constant across all edges)
+- **Effect:** Controls smoothing of auxiliary variable w (local plane slopes)
+
+## Processing Control
+
+### `input.subsample_factor`
+- **Units:** frames
+- **Config value:** 1
+- **Description:** Process every Nth input frame
+- **Effect:** Higher values reduce CPU load but decrease temporal resolution
+
+### `input.poseframe_subsample_factor`
+- **Units:** frames
+- **Config value:** 6
+- **Description:** Update pose graph every Nth frame
+- **Effect:** At 30fps with value 6 → updates every 200ms
+
+## Output Filtering
+
+### `output.min_triangle_idepth`
+- **Units:** 1/meters
+- **Config value:** 0.01 (corresponds to 100m maximum depth)
+- **Description:** Minimum inverse depth for triangle display
+- **Effect:** Filters distant/uncertain triangles from visualization
+
+### `output.edge_length_thresh`
+- **Units:** fraction of image width
+- **Config value:** 0.333
+- **Description:** Maximum edge length for display
+- **Example:** 0.333 × 640px = 213 pixels maximum edge length
+- **Effect:** Prevents long, unreliable triangles in output mesh
+
+### `output.oblique_normal_thresh`
+- **Units:** radians
+- **Config value:** 1.57 (~90 degrees)
+- **Description:** Maximum angle between triangle normal and viewing direction
+- **Effect:** Filters out oblique (edge-on) triangles from display
+
+## Tuning Guidelines
+
+**Unstable optimization?**
+- Reduce `step_x` and `step_q`
+- Ensure στ < 1 constraint is satisfied
+
+**Too slow convergence?**
+- Increase `theta` (but keep < 1)
+- Increase `step_x` and `step_q` carefully
+
+**Noisy depth estimates?**
+- Increase `epipolar_line_var`
+- Decrease `data_factor` (trust smoothing more)
+
+**Over-smoothed results?**
+- Decrease `epipolar_line_var`
+- Increase `data_factor` (trust measurements more)
+- Use smaller detail level L (denser features)
+
+**Want faster processing?**
+- Increase detail level L (sparser features)
+- Increase `subsample_factor`
+- Increase `idepth_var_max` (accept less certain features)
+
+## Algorithm Overview
+
+FLaME reformulates dense monocular reconstruction as a graph-based variational optimization problem:
+
+1. **Features** are detected and tracked along epipolar lines
+2. **Delaunay triangulation** creates a mesh connecting converged features
+3. **NLTGV² regularization** promotes piecewise-planar structure via graph optimization
+4. **Primal-dual optimization** alternates between updating vertex depths and edge constraints
+
+The key insight: mesh edges enforce second-order smoothness constraints that adapt to local geometry, producing planar surfaces with sharp boundaries rather than uniformly smooth reconstructions.
+
 ### Performance Tips
 For best results use a high framerate (>= 30 Hz) camera with VGA-sized
 images. Higher resolution images will require more accurate poses. The feature

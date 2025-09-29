@@ -5,7 +5,6 @@
 #include <mrs_lib/subscriber_handler.h>
 #include <mrs_lib/publisher_handler.h>
 
-//#include <ros_sensor_streams/tracked_image_stream.h>
 #include <ros_sensor_streams/conversions.h>
 
 #include <flame/utils/image_utils.h>
