@@ -142,7 +142,7 @@ class FlameRos : public rclcpp::Node
     std::string camera_world_frame_id_; // Frame id of the world in camera optical coordinates.
     int subsample_factor_; // Process one out of this many images.
     int poseframe_subsample_factor_; // Create a poseframe every this number of images.
-    int resize_factor_;
+    int resize_factor_; // Factor to resize image. resize_factor_ = 2 will downsample by 2 in each dimension.
 
     // Use an external calibration instead of what's in the camera_info message.
     bool use_external_cal_;
@@ -223,12 +223,8 @@ class FlameRos : public rclcpp::Node
     unsigned long int pose_frame_id;
 
     bool inited_;
-
-    //int resize_factor_; // Factor to resize image. resize_factor_ = 2 will
-                        // downsample by 2 in each dimension.
     bool undistort_; // Whether to undistort images.
 
-    std::string world_frame_id_;
     std::string live_frame_id_;
     int width_;
     int height_;

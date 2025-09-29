@@ -7,23 +7,19 @@ namespace flame_ros {
 FlameRos::FlameRos(const rclcpp::NodeOptions & options) :
   rclcpp::Node(NODE_NAME, options),
   is_initialized_(false),
+  tf_listener_(nullptr),
   tf_buffer_(get_clock()),
+  resize_factor_(1),
+  use_external_cal_(false),
   odom_path(nullptr),
   pose_frame_id(0),
-  // originally from tracked_image_stream.cpp
   inited_(false),
-  use_external_cal_(false),
-  resize_factor_(1),
   undistort_(false),
-  //world_frame_id_(world_frame_id),
   live_frame_id_(),
   width_(0),
   height_(0),
   K_(),
   D_(5),
-  tf_listener_(nullptr),
-  // tf_buffer_(get_clock()),
-  // image_transport_(std::make_unique<image_transport::ImageTransport>(nh_)),
   cam_sub_()
 {
   timer_initialization_ = create_wall_timer(std::chrono::duration<double>(1.0), std::bind(&FlameRos::timerInitialization, this));
@@ -35,7 +31,6 @@ void FlameRos::timerInitialization() {
   // std::signal(SIGABRT, crash_handler);
   // std::signal(SIGFPE, crash_handler);
 
-  //tf_buffer_ = std::make_shared<tf2_ros::Buffer>(get_clock());
   image_transport_ = std::make_unique<image_transport::ImageTransport>(shared_from_this());
 
   mrs_lib::ParamLoader param_loader(shared_from_this(), NODE_NAME);
@@ -44,11 +39,7 @@ void FlameRos::timerInitialization() {
 
   num_imgs_ = 0;
 
-  // Setup tf.
-  //tf_listener_ = std::make_shared<tf2_ros::TransformListener>(tf_buffer_);
-
   /*==================== Input Params ====================*/
-  //param_loader.loadParam("input.camera_frame_id", camera_frame_id_);
   param_loader.loadParam("input.camera_world_frame_id", camera_world_frame_id_);
   param_loader.loadParam("input.subsample_factor", subsample_factor_);
   param_loader.loadParam("input.poseframe_subsample_factor", poseframe_subsample_factor_);
@@ -406,14 +397,6 @@ void FlameRos::callback(const std::shared_ptr<const sensor_msgs::msg::Image>& rg
 
   ros_sensor_streams::tfToSophusSE3<float>(tf.transform, &pose);
 
-  // Frame frame;
-  // frame.id = frame_counter++; // header.seq field was dropped in ROS2 implementation, we have to replace it by counter
-  // frame.cam_frame_id = live_frame_id_;
-  // frame.time = rclcpp::Time(rgb_msg->header.stamp).seconds();
-  // frame.quat = pose.unit_quaternion();
-  // frame.trans = pose.translation();
-  // frame.img = rgb;
-
   processFrame(frame_counter++, live_frame_id_, rclcpp::Time(rgb_msg->header.stamp).seconds(), Sophus::SE3f(pose.unit_quaternion(), pose.translation()),
                      rgb);
 
@@ -505,8 +488,6 @@ void FlameRos::append_odom_to_path(nav_msgs::msg::Odometry::ConstSharedPtr odom_
       odom_path = std::make_shared<nav_msgs::msg::Path>();
   }
   // Update path header with current timestamp and frame
-  // odom_path->header.stamp = odom_msg->header.stamp;
-  // odom_path->header.frame_id = odom_msg->header.frame_id;
   odom_path->header.stamp.sec = odom_msg->header.stamp.sec;
   odom_path->header.stamp.nanosec = odom_msg->header.stamp.nanosec;
   odom_path->header.frame_id = odom_msg->header.frame_id;
