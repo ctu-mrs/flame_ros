@@ -129,90 +129,10 @@ void FlameRos::timerInitialization() {
   param_loader.loadParam("regularization.nltgv2.max_height", params_.max_height);
   param_loader.loadParam("regularization.nltgv2.check_sticky_obstacles", params_.check_sticky_obstacles);
 
-#ifdef FLAME_WITH_FLA
-  bool use_camera_info = false;
-  param_loader.loadParam("input.use_camera_info", &use_camera_info);
-
-  if (use_camera_info) {
-    // Make sure we don't attempt to resize the image.
-    FLAME_ASSERT(resize_factor_ == 1);
-
-    // Setup input stream.
-    input_ = std::make_shared<ros_sensor_streams::
-        TrackedImageStream>(camera_world_frame_id_, nh);
-  } else {
-    // FLA does not follow ROS conventions for camera/image streams/calibration,
-    // so we need to do some extra work to pass data through. First, the
-    // camera_info messages containing the camera intrinsics/distortion are not
-    // filled in. We need to grab the calibration from samros's params. Since
-    // samwise estimates the paramters on the fly, we should really use the
-    // refined versions, but this should work for now. Finally, we need to
-    // undistort the images.
-    int width, height;
-    param_loader.loadParam("samros.camera.image_width", &width);
-    param_loader.loadParam("samros.camera.image_height", &height);
-
-    if (((width != 640) && (width != 1280)) ||
-        ((height != 512) && (height != 1024))) {
-      RCLCPP_ERROR(get_logger(), "FlameRos: Unexpected image size = (%i, % i)\n",
-                width, height);
-    }
-
-    double fx, fy, cx, cy;
-    param_loader.loadParam("samros.camera.intrinsics.fu", &fx);
-    param_loader.loadParam("samros.camera.intrinsics.fv", &fy);
-    param_loader.loadParam("samros.camera.intrinsics.pu", &cx);
-    param_loader.loadParam("samros.camera.intrinsics.pv", &cy);
-
-    double k1, k2, p1, p2, k3;
-    param_loader.loadParam("samros.camera.distortion.k1", &k1);
-    param_loader.loadParam("samros.camera.distortion.k2", &k2);
-    param_loader.loadParam("samros.camera.distortion.p1", &p1);
-    param_loader.loadParam("samros.camera.distortion.p2", &p2);
-    param_loader.loadParam("samros.camera.distortion.k3", &k3);
-
-    Eigen::VectorXf D(5);
-    D << k1, k2, p1, p2, k3;
-
-    Eigen::Matrix3f K(Eigen::Matrix3f::Zero());
-    K(0, 0) = fx;
-    K(0, 2) = cx;
-    K(1, 1) = fy;
-    K(1, 2) = cy;
-    K(2, 2) = 1.0f;
-
-    // Adjust calibration based on resize_factor.
-    K /= resize_factor_;
-    K(2, 2) = 1.0f;
-
-    // Setup input stream.
-    bool undistort = true;
-    input_ = std::make_shared<ros_sensor_streams::
-                              TrackedImageStream>(camera_world_frame_id_, nh, K,
-                                                  D, undistort, resize_factor_);
-  }
-
-  // Setup health and status.
-  int tmp; // getParam can't handle uint8_t.
-  param_loader.loadParam("fla.node_id", &tmp);
-  node_id_ = tmp;
-
-  param_loader.loadParam("fla.heart_beat_dt", &heart_beat_dt_);
-  param_loader.loadParam("fla.alarm_timeout", &alarm_timeout_);
-  param_loader.loadParam("fla.fail_timeout", &fail_timeout_);
-
-  heart_beat_ = nh.createTimer(rclcpp::Duration(heart_beat_dt_, 0),
-                                &FlameRos::heartBeat, this);
-  heart_beat_pub_ = nh.advertise<fla_msgs::ProcessStatus>("/globalstatus", 1);
-#else
   // Image resizing not supported for non-FLA.
   FLAME_ASSERT(resize_factor_ == 1);
 
-  // Setup input stream.
-  //input_ = std::make_shared<ros_sensor_streams::
-  //                          TrackedImageStream>(camera_world_frame_id_, shared_from_this());
-    // Subscribe to topics.
-  //image_transport::ImageTransport it_(shared_from_this());
+  // Subscribe to topics.
   it_ = std::make_shared<image_transport::ImageTransport>(shared_from_this());
   image_transport_.reset(new image_transport::ImageTransport(shared_from_this()));
 
@@ -224,7 +144,6 @@ void FlameRos::timerInitialization() {
 
   // Set up tf.
   tf_listener_.reset(new tf2_ros::TransformListener(tf_buffer_));
-#endif
 
   pfs_inited_ = true; // Default values.
   first_pf_id_ = 0;
@@ -235,27 +154,15 @@ void FlameRos::timerInitialization() {
       pfs_inited_ = false;
 
       // Subscribe to poseframe topic.
-      //poseframe_sub_ = nh.subscribe("poseframes", 1,
-      //                              &FlameRos::poseframeCallback, this);
-      // mrs_lib::SubscriberHandlerOptions shopts(shared_from_this());
-      // shopts.node_name = NODE_NAME;
-      // shopts.topic_name = "pathimu";
-      //shopts.no_message_timeout = no_message_timeout;
-      // poseframe_sub_ = mrs_lib::SubscriberHandler<nav_msgs::msg::Path>(
-      //     shopts,
-      //     std::bind(&FlameRos::poseframeCallback, this, std::placeholders::_1)
-      // );
-
       poseframe_sub_ = create_subscription<nav_msgs::msg::Path>(
         "pathimu", 10, std::bind(&FlameRos::poseframeCallback, this, std::placeholders::_1));
+      // Subscribe to odom topic.
       odom_sub_ = create_subscription<nav_msgs::msg::Odometry>(
          "odom", 10, std::bind(&FlameRos::odomCallback, this, std::placeholders::_1));
   }
 
   // Set up publishers. For some reason this appears to take a while.
   if(!params_.debug_quiet) RCLCPP_INFO(get_logger(), "FlameRos: Setting up publishers...\n");
-
-  //it_ = std::make_shared<image_transport::ImageTransport>(shared_from_this());
 
   if (publish_idepthmap_) {
     idepth_pub_ = it_->advertiseCamera("~/idepth_registered/image_rect_out", 5);
@@ -270,13 +177,10 @@ void FlameRos::timerInitialization() {
     mesh_pub_ = mrs_lib::PublisherHandler<pcl_msgs::msg::PolygonMesh>(shared_from_this(), "~/mesh_out");
   }
   if (publish_cloud_) {
-    //cloud_pub_ = nh.advertise<sensor_msgs::PointCloud2>("cloud", 5);
     cloud_pub_ = mrs_lib::PublisherHandler<sensor_msgs::msg::PointCloud2>(shared_from_this(), "~/cloud_out");
   }
   if (publish_stats_) {
-    //stats_pub_ = nh.advertise<FlameStats>("stats", 5);
     stats_pub_ = mrs_lib::PublisherHandler<flame_ros_msgs::msg::FlameStats>(shared_from_this(), "~/stats_out");
-    //nodelet_stats_pub_ = nh.advertise<FlameNodeletStats>("nodelet_stats", 5);
     nodelet_stats_pub_ = mrs_lib::PublisherHandler<flame_ros_msgs::msg::FlameNodeletStats>(shared_from_this(), "~/nodelet_stats_out");
   }
 
@@ -303,7 +207,6 @@ void FlameRos::timerInitialization() {
   timer_initialization_->cancel();
 
   // Kick off main thread.
-  //thread_ = std::thread(&FlameRos::main, this);
 
   RCLCPP_INFO(get_logger(), "flame_ros constructed");
 }
@@ -505,10 +408,6 @@ void FlameRos::append_odom_to_path(nav_msgs::msg::Odometry::ConstSharedPtr odom_
 
       // Add to path
       odom_path->poses.push_back(pose_stamped);
-
-      // Update last pose
-      //last_pose_ = current_pose;
-      //has_last_pose_ = true;
 
       // Limit path length to prevent memory issues
       //if (static_cast<int>(odom_path->poses.size()) > max_path_length_)
@@ -743,126 +642,6 @@ void FlameRos::processFrame(const uint32_t img_id, const std::string& cam_frame_
 
   return;
 }
-
-  /**
-   * \brief Main processing loop.
-   */
-// void FlameRos::main() {
-//     // Wait until input is initialized.
-//     if(!params_.debug_quiet) RCLCPP_INFO(get_logger(), "FlameRos: Waiting for calibration...\n");
-
-//     while (!inited_) {
-//       std::this_thread::yield();
-//     }
-
-    // Kinv_ = K_.inverse();
-
-    // // Initialize depth sensor.
-    // if(!params_.debug_quiet) RCLCPP_INFO(get_logger(), "FlameRos: Constructing Flame...\n");
-    // sensor_ = std::make_shared<flame::Flame>(width_,
-    //                                          height_,
-    //                                          K_,
-    //                                          Kinv_,
-    //                                          params_);
-
-    // /*==================== Enter main loop ====================*/
-    // if(!params_.debug_quiet) RCLCPP_INFO(get_logger(), "FlameRos: Done. We are GO for launch!\n");
-    
-    //unsigned int frame_count = 0;
-
-//     while (rclcpp::ok()) {
-//       stats_.tick("main");
-
-//       // Wait for queue to have items.
-//       stats_.set("queue_size", queue().size());
-//       stats_.tick("waiting");
-//       std::unique_lock<std::recursive_mutex> lock(queue().mutex());
-//       queue().non_empty().wait(lock, [this](){
-//           return (queue().size() > 0);
-//         });
-//       lock.unlock();
-//       stats_.tock("waiting");
-//       if(!params_.debug_quiet) RCLCPP_INFO(get_logger(),
-//           "FlameRos/waiting = %4.1fms, queue_size = %i\n",
-//           stats_.timings("waiting"),
-//           static_cast<int>(stats_.stats("queue_size")));
-
-//       // Grab the first item in the queue.
-//       Frame frame = queue().front();
-//       queue().pop();
-//       if ((pfs_inited_) && (num_imgs_ % subsample_factor_ == 0)) {
-//         // Eat data.
-//         // processFrame(frame.id, frame.time, Sophus::SE3f(frame.quat, frame.trans),
-//         //              frame.img);
-
-//         processFrame(frame_count++, frame.cam_frame_id, frame.time, Sophus::SE3f(frame.quat, frame.trans),
-//                      frame.img);
-//       }
-
-//       /*==================== Timing stuff ====================*/
-//       // Compute two measures of throughput in Hz. The first is the actual number of
-//       // frames per second, the second is the theoretical maximum fps based on the
-//       // runtime. They are not necessarily the same - the former takes external
-//       // latencies into account.
-
-//       // Compute maximum fps based on runtime.
-//       double fps_max = 0.0f;
-//       if (stats_.stats("fps_max") <= 0.0f) {
-//         fps_max = 1000.0f / stats_.timings("main");
-//       } else {
-//         fps_max = 1.0f / (0.99 * 1.0f/stats_.stats("fps_max") +
-//                           0.01 * stats_.timings("main")/1000.0f);
-//       }
-//       stats_.set("fps_max", fps_max);
-
-//       // Compute actual fps (overall throughput of system).
-//       stats_.tock("fps");
-//       double fps = 0.0;
-//       if (stats_.stats("fps") <= 0.0f) {
-//         fps = 1000.0f / stats_.timings("fps");
-//       } else {
-//         fps = 1.0f / (0.99 * 1.0f/stats_.stats("fps") +
-//                       0.01 * stats_.timings("fps")/1000.0f);
-//       }
-//       stats_.set("fps", fps);
-//       stats_.tick("fps");
-
-// #ifdef FLAME_WITH_FLA
-//       last_update_sec_ = get_clock()->now().seconds();
-// #endif
-
-//       stats_.tock("main");
-
-//       if ((num_imgs_ % load_integration_factor_) == 0) {
-//         // Compute load stats.
-//         fu::Load max_load, sys_load, pid_load;
-//         load_.get(&max_load, &sys_load, &pid_load);
-//         stats_.set("max_load_cpu", max_load.cpu);
-//         stats_.set("max_load_mem", max_load.mem);
-//         stats_.set("max_load_swap", max_load.swap);
-//         stats_.set("sys_load_cpu", sys_load.cpu);
-//         stats_.set("sys_load_mem", sys_load.mem);
-//         stats_.set("sys_load_swap", sys_load.swap);
-//         stats_.set("pid_load_cpu", pid_load.cpu);
-//         stats_.set("pid_load_mem", pid_load.mem);
-//         stats_.set("pid_load_swap", pid_load.swap);
-//         stats_.set("pid", getpid());
-//       }
-
-//       // publishFlameNodeletStats(nodelet_stats_pub_,
-//       //                          frame.id, frame.time,
-//       //                          stats_.stats(), stats_.timings());
-
-//       if(!params_.debug_quiet) RCLCPP_INFO(get_logger(),
-//         "FlameRos/main(%i/%u) = %4.1fms/%.1fHz (%.1fHz)\n",
-//         num_imgs_, frame.id, stats_.timings("main"),
-//         stats_.stats("fps_max"), stats_.stats("fps"));
-
-//       num_imgs_++;
-//     }
-
-//     return;
-// }
 
 } // namespace flame_ros
 

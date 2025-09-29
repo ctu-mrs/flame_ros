@@ -252,6 +252,29 @@ Mapping between ROS configuration parameters and algorithm parameters from the p
 - **Effect:** Higher values = less trust in individual measurements, more reliance on smoothing
 - **Note:** High value (10.0) indicates very uncertain stereo matching, favoring aggressive smoothing
 
+### `features.do_letterbox`
+- **Units:** boolean
+- **Config value:** false
+- **Description:** Process only the middle third of the image (horizontally)
+- **Effect:** When true, ignores top and bottom thirds of image, focusing feature detection on central horizontal band
+- **Use case:** Useful for ground robots or vehicles where relevant obstacles are typically in the middle of the image, while sky (top) and ground (bottom) are less informative
+- **Performance impact:** Reduces computational load by ~66% but loses vertical field of view
+
+### `features.detection.min_error` → Photometric error threshold
+- **Units:** intensity² (squared pixel intensity difference)
+- **Config value:** 100.0
+- **Description:** Minimum photometric error for a pixel to be considered as a feature candidate
+- **Calculation:** Measures how much pixel intensity varies within the detection window
+- **Effect:** Higher values = only accept pixels in high-contrast/textured regions; Lower values = accept features even in low-contrast areas
+- **Typical range:** 50-200 for grayscale images (0-255 intensity scale)
+
+### `features.tracking.max_dropouts` → Maximum missed detections
+- **Units:** frames
+- **Config value:** 10
+- **Description:** Maximum number of consecutive frames a feature can fail to be matched before it's permanently removed
+- **Effect:** Higher values = more persistent features (survive temporary occlusions); Lower values = faster removal of lost features
+- **Typical range:** 5-20 frames
+
 ## Graph Construction
 
 ### `regularization.nltgv2.idepth_var_max` → σ²_max (Section 3.2)
