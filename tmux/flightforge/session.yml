@@ -39,7 +39,7 @@ windows:
   - flame:
       layout: tiled
       panes:
-        - ros2 launch flame_ros flame_ros_sim.launch.py
+        - ros2 launch flame_ros flame_ros.launch.py
   # - stereo:
   #     layout: tiled
   #     panes:

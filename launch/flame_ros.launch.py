@@ -6,6 +6,16 @@ from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.substitutions import FindPackageShare
 from mrs_lib.remappings_custom_config_parser import RemappingsCustomConfigParser
 
+from ament_index_python.packages import get_package_share_directory
+
+from launch.substitutions import (
+        LaunchConfiguration,
+        IfElseSubstitution,
+        PythonExpression,
+        PathJoinSubstitution,
+        EnvironmentVariable,
+        )
+
 import launch
 
 import os
@@ -13,6 +23,12 @@ import os
 def generate_launch_description():
 
     ld = launch.LaunchDescription()
+
+    pkg_name = "flame_ros"
+
+    this_pkg_path = get_package_share_directory(pkg_name)
+
+    # #{ uav_name
 
     uav_name = LaunchConfiguration('uav_name')
 
@@ -22,21 +38,56 @@ def generate_launch_description():
         description="The uav name used for namespacing.",
     ))
 
+    # #} end of uav_name
+
+    # #{ custom_config
+
+    custom_config = LaunchConfiguration('custom_config')
+
+    # this adds the args to the list of args available for this launch files
+    # these args can be listed at runtime using -s flag
+    # default_value is required to if the arg is supposed to be optional at launch time
     ld.add_action(DeclareLaunchArgument(
         'custom_config',
-        default_value=PathJoinSubstitution([
-            FindPackageShare('flame_ros'),
-            'config',
-            'flame_component_sim.yaml'
-        ]),
-        description='Path to the FLAME configuration file'
-    ))
+        default_value="",
+        description="Path to the custom configuration file. The path can be absolute, starting with '/' or relative to the current working directory",
+        ))
+
+    # behaviour:
+    #     custom_config == "" => custom_config: ""
+    #     custom_config == "/<path>" => custom_config: "/<path>"
+    #     custom_config == "<path>" => custom_config: "$(pwd)/<path>"
+    custom_config = IfElseSubstitution(
+            condition=PythonExpression(['"', custom_config, '" != "" and ', 'not "', custom_config, '".startswith("/")']),
+            if_value=PathJoinSubstitution([EnvironmentVariable('PWD'), custom_config]),
+            else_value=custom_config
+            )
+
+    # #} end of custom_config
     
+    # #{ camera
+
+    camera_topic = LaunchConfiguration('camera_topic')
+
     ld.add_action(DeclareLaunchArgument(
-        'cam_type',
+        'camera_topic',
         default_value='rgb',
-        description='Path to the FLAME configuration file'
+        description='topic of the camera that contains image_raw'
     ))
+
+    # #} end of camera
+
+    # #{ use_sim_time
+
+    use_sim_time = LaunchConfiguration('use_sim_time')
+
+    ld.add_action(DeclareLaunchArgument(
+        'use_sim_time',
+        default_value=os.getenv('USE_SIM_TIME', "false"),
+        description="Should the node subscribe to sim time?",
+    ))
+
+    # #} end of custom_config
 
     node = ComposableNode(
         package='flame_ros',
@@ -45,12 +96,13 @@ def generate_launch_description():
         namespace=uav_name,
         parameters=[
             {"use_sim_time": True},
-            LaunchConfiguration('custom_config')
+            {"default_config": this_pkg_path + "/config/default.yaml"},
+            {"custom_config": custom_config},
         ],
         remappings=[
             # subscribers
-            ('~/image_in', [LaunchConfiguration('cam_type'), '/image_raw']),
-            ('~/camera_info', [LaunchConfiguration('cam_type'), '/camera_info']),
+            ('~/image_in', [camera_topic, '/image_raw']),
+            ('~/camera_info', [camera_topic, '/camera_info']),
             # publishers
             ('~/mesh_out', '~/mesh'),
             ('~/cloud_out', '~/cloud'),
@@ -69,7 +121,7 @@ def generate_launch_description():
             ]
     )
 
-    ld.add_action(RemappingsCustomConfigParser(node, LaunchConfiguration('custom_config')))
+    ld.add_action(RemappingsCustomConfigParser(node, custom_config))
 
     # #{ container
 
@@ -86,7 +138,7 @@ def generate_launch_description():
         parameters=[
             {'use_intra_process_comms': True},
             {'thread_num': os.cpu_count()},
-            {'use_sim_time': True},
+            {'use_sim_time': use_sim_time},
         ],
     )
 
