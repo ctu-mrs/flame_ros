@@ -34,29 +34,26 @@
 
 namespace fu = flame::utils;
 
-namespace flame_ros {
+namespace flame_ros
+{
 
-void publishFlameNodeletStats(mrs_lib::PublisherHandler<flame_ros_msgs::msg::FlameNodeletStats>& pub,
-                              int img_id, double time,
-                              const std::unordered_map<std::string, double>& stats,
-                              const std::unordered_map<std::string, double>& timings) {
+void publishFlameNodeletStats(mrs_lib::PublisherHandler<flame_ros_msgs::msg::FlameNodeletStats> &pub, int img_id, double time,
+                              const std::unordered_map<std::string, double> &stats, const std::unordered_map<std::string, double> &timings) {
   flame_ros_msgs::msg::FlameNodeletStats::SharedPtr msg(new flame_ros_msgs::msg::FlameNodeletStats());
 
   msg->header.stamp = rclcpp::Time(static_cast<int64_t>(time * 1e9), RCL_ROS_TIME);
 
-  msg->img_id = img_id;
+  msg->img_id    = img_id;
   msg->timestamp = time;
 
   // Fill stat if it exists in the map.
-  auto fillStati = [](const std::unordered_map<std::string, double>& stats,
-                      const std::string& name, int* out) {
+  auto fillStati = [](const std::unordered_map<std::string, double> &stats, const std::string &name, int *out) {
     if (stats.count(name) > 0) {
       *out = stats.at(name);
     }
     return;
   };
-  auto fillStatf = [](const std::unordered_map<std::string, double>& stats,
-                      const std::string& name, float* out) {
+  auto fillStatf = [](const std::unordered_map<std::string, double> &stats, const std::string &name, float *out) {
     if (stats.count(name) > 0) {
       *out = stats.at(name);
     }
@@ -81,7 +78,7 @@ void publishFlameNodeletStats(mrs_lib::PublisherHandler<flame_ros_msgs::msg::Fla
   fillStatf(stats, "sys_load_swap", &msg->sys_load_swap);
   fillStatf(stats, "pid_load_cpu", &msg->pid_load_cpu);
   fillStatf(stats, "pid_load_mem", &msg->pid_load_mem);
-  fillStatf(stats, "pid_load_swap ", &msg->pid_load_swap );
+  fillStatf(stats, "pid_load_swap ", &msg->pid_load_swap);
   fillStati(stats, "pid", &msg->pid);
 
   pub.publish(*msg);
@@ -89,27 +86,23 @@ void publishFlameNodeletStats(mrs_lib::PublisherHandler<flame_ros_msgs::msg::Fla
   return;
 }
 
-void publishFlameStats(mrs_lib::PublisherHandler<flame_ros_msgs::msg::FlameStats>& pub,
-                       int img_id, double time,
-                       const std::unordered_map<std::string, double>& stats,
-                       const std::unordered_map<std::string, double>& timings) {
+void publishFlameStats(mrs_lib::PublisherHandler<flame_ros_msgs::msg::FlameStats> &pub, int img_id, double time,
+                       const std::unordered_map<std::string, double> &stats, const std::unordered_map<std::string, double> &timings) {
   flame_ros_msgs::msg::FlameStats::SharedPtr msg(new flame_ros_msgs::msg::FlameStats());
 
   msg->header.stamp = rclcpp::Time(static_cast<int64_t>(time * 1e9), RCL_ROS_TIME);
 
-  msg->img_id = img_id;
+  msg->img_id    = img_id;
   msg->timestamp = time;
 
   // Fill stat if it exists in the map.
-  auto fillStati = [](const std::unordered_map<std::string, double>& stats,
-                      const std::string& name, int* out) {
+  auto fillStati = [](const std::unordered_map<std::string, double> &stats, const std::string &name, int *out) {
     if (stats.count(name) > 0) {
       *out = stats.at(name);
     }
     return;
   };
-  auto fillStatf = [](const std::unordered_map<std::string, double>& stats,
-                      const std::string& name, float* out) {
+  auto fillStatf = [](const std::unordered_map<std::string, double> &stats, const std::string &name, float *out) {
     if (stats.count(name) > 0) {
       *out = stats.at(name);
     }
@@ -130,10 +123,8 @@ void publishFlameStats(mrs_lib::PublisherHandler<flame_ros_msgs::msg::FlameStats
   fillStati(stats, "num_fail_ambiguous_match", &msg->num_fail_ambiguous_match);
   fillStati(stats, "num_fail_max_cost", &msg->num_fail_max_cost);
 
-  fillStatf(stats, "nltgv2_total_smoothness_cost",
-            &msg->nltgv2_total_smoothness_cost);
-  fillStatf(stats, "nltgv2_avg_smoothness_cost",
-            &msg->nltgv2_avg_smoothness_cost);
+  fillStatf(stats, "nltgv2_total_smoothness_cost", &msg->nltgv2_total_smoothness_cost);
+  fillStatf(stats, "nltgv2_avg_smoothness_cost", &msg->nltgv2_avg_smoothness_cost);
   fillStatf(stats, "nltgv2_total_data_cost", &msg->nltgv2_total_data_cost);
   fillStatf(stats, "nltgv2_avg_data_cost", &msg->nltgv2_avg_data_cost);
 
@@ -162,16 +153,9 @@ void publishFlameStats(mrs_lib::PublisherHandler<flame_ros_msgs::msg::FlameStats
   return;
 }
 
-void publishDepthMesh(mrs_lib::PublisherHandler<pcl_msgs::msg::PolygonMesh>& mesh_pub,
-                      const std::string& frame_id,
-                      double time,
-                      const Eigen::Matrix3f& Kinv,
-                      const std::vector<cv::Point2f>& vertices,
-                      const std::vector<float>& idepths,
-                      const std::vector<Eigen::Vector3f>& normals,
-                      const std::vector<flame::Triangle>& triangles,
-                      const std::vector<bool>& tri_validity,
-                      const cv::Mat3b& rgb) {
+void publishDepthMesh(mrs_lib::PublisherHandler<pcl_msgs::msg::PolygonMesh> &mesh_pub, const std::string &frame_id, double time, const Eigen::Matrix3f &Kinv,
+                      const std::vector<cv::Point2f> &vertices, const std::vector<float> &idepths, const std::vector<Eigen::Vector3f> &normals,
+                      const std::vector<flame::Triangle> &triangles, const std::vector<bool> &tri_validity, const cv::Mat3b &rgb) {
   pcl_msgs::msg::PolygonMesh::SharedPtr msg(new pcl_msgs::msg::PolygonMesh());
 
   msg->header.stamp = rclcpp::Time(static_cast<int64_t>(time * 1e9), RCL_ROS_TIME);
@@ -181,7 +165,7 @@ void publishDepthMesh(mrs_lib::PublisherHandler<pcl_msgs::msg::PolygonMesh>& mes
   // Create point cloud to hold vertices.
   pcl::PointCloud<flame_ros::PointNormalUV> cloud;
 
-  cloud.width = vertices.size();
+  cloud.width  = vertices.size();
   cloud.height = 1;
   cloud.points.resize(vertices.size());
   cloud.is_dense = false;
@@ -243,10 +227,8 @@ void publishDepthMesh(mrs_lib::PublisherHandler<pcl_msgs::msg::PolygonMesh>& mes
   return;
 }
 
-void publishDepthMap(const image_transport::CameraPublisher& pub,
-                     const std::string& frame_id,
-                     double time, const Eigen::Matrix3f& K,
-                     const cv::Mat1f& depth_est) {
+void publishDepthMap(const image_transport::CameraPublisher &pub, const std::string &frame_id, double time, const Eigen::Matrix3f &K,
+                     const cv::Mat1f &depth_est) {
   // Publish depthmap.
   std_msgs::msg::Header header;
 
@@ -255,24 +237,24 @@ void publishDepthMap(const image_transport::CameraPublisher& pub,
   header.frame_id = frame_id;
 
   sensor_msgs::msg::CameraInfo::SharedPtr cinfo(new sensor_msgs::msg::CameraInfo);
-  cinfo->header = header;
-  cinfo->height = depth_est.rows;
-  cinfo->width = depth_est.cols;
+  cinfo->header           = header;
+  cinfo->height           = depth_est.rows;
+  cinfo->width            = depth_est.cols;
   cinfo->distortion_model = "plumb_bob";
-  cinfo->d = {0.0, 0.0, 0.0, 0.0, 0.0};
+  cinfo->d                = {0.0, 0.0, 0.0, 0.0, 0.0};
   for (int ii = 0; ii < 3; ++ii) {
     for (int jj = 0; jj < 3; ++jj) {
-      cinfo->k[ii*3 + jj] = K(ii, jj);
-      cinfo->p[ii*4 + jj] = K(ii, jj);
-      cinfo->r[ii*3 + jj] = 0.0;
+      cinfo->k[ii * 3 + jj] = K(ii, jj);
+      cinfo->p[ii * 4 + jj] = K(ii, jj);
+      cinfo->r[ii * 3 + jj] = 0.0;
     }
   }
-  cinfo->p[3] = 0.0;
-  cinfo->p[7] = 0.0;
+  cinfo->p[3]  = 0.0;
+  cinfo->p[7]  = 0.0;
   cinfo->p[11] = 0.0;
-  cinfo->r[0] = 1.0;
-  cinfo->r[4] = 1.0;
-  cinfo->r[8] = 1.0;
+  cinfo->r[0]  = 1.0;
+  cinfo->r[4]  = 1.0;
+  cinfo->r[8]  = 1.0;
 
   cv_bridge::CvImage depth_cvi(header, "32FC1", depth_est);
 
@@ -281,24 +263,21 @@ void publishDepthMap(const image_transport::CameraPublisher& pub,
   return;
 }
 
-void publishPointCloud(mrs_lib::PublisherHandler<sensor_msgs::msg::PointCloud2>& pub,
-                       const std::string& frame_id,
-                       double time, const Eigen::Matrix3f& K,
-                       const cv::Mat1f& depth_est,
-                       float min_depth, float max_depth) {
+void publishPointCloud(mrs_lib::PublisherHandler<sensor_msgs::msg::PointCloud2> &pub, const std::string &frame_id, double time, const Eigen::Matrix3f &K,
+                       const cv::Mat1f &depth_est, float min_depth, float max_depth) {
   int height = depth_est.rows;
-  int width = depth_est.cols;
+  int width  = depth_est.cols;
 
   pcl::PointCloud<pcl::PointXYZ> cloud;
-  cloud.width = width;
-  cloud.height = height;
+  cloud.width    = width;
+  cloud.height   = height;
   cloud.is_dense = false;
   cloud.points.resize(width * height);
 
   Eigen::Matrix3f Kinv(K.inverse());
   for (int ii = 0; ii < height; ++ii) {
     for (int jj = 0; jj < width; ++jj) {
-      int idx = ii*width + jj;
+      int idx = ii * width + jj;
 
       float depth = depth_est(ii, jj);
 
@@ -334,27 +313,24 @@ void publishPointCloud(mrs_lib::PublisherHandler<sensor_msgs::msg::PointCloud2>&
   return;
 }
 
-void getDepthConfusionMatrix(const cv::Mat1f& idepths, const cv::Mat1f& depth,
-                             cv::Mat1f* idepth_error,  float* total_error,
-                             int* true_pos, int* true_neg,
-                             int* false_pos, int* false_neg) {
+void getDepthConfusionMatrix(const cv::Mat1f &idepths, const cv::Mat1f &depth, cv::Mat1f *idepth_error, float *total_error, int *true_pos, int *true_neg,
+                             int *false_pos, int *false_neg) {
   // Compute confusion matrix with detection being strictly positive idepth.
-  *true_pos = 0;
-  *true_neg = 0;
+  *true_pos  = 0;
+  *true_neg  = 0;
   *false_pos = 0;
   *false_neg = 0;
 
-  *total_error = 0.0f;
-  *idepth_error = cv::Mat1f(depth.rows, depth.cols,
-                            std::numeric_limits<float>::quiet_NaN());
+  *total_error  = 0.0f;
+  *idepth_error = cv::Mat1f(depth.rows, depth.cols, std::numeric_limits<float>::quiet_NaN());
   for (int ii = 0; ii < depth.rows; ++ii) {
     for (int jj = 0; jj < depth.cols; ++jj) {
       if (depth(ii, jj) > 0) {
         if (!std::isnan(idepths(ii, jj))) {
-          float idepth_est = idepths(ii, jj);
+          float idepth_est  = idepths(ii, jj);
           float idepth_true = 1.0f / depth(ii, jj);
 
-          float error = fu::fast_abs(idepth_est - idepth_true);
+          float error             = fu::fast_abs(idepth_est - idepth_true);
           (*idepth_error)(ii, jj) = error;
           *total_error += error;
 
@@ -363,8 +339,8 @@ void getDepthConfusionMatrix(const cv::Mat1f& idepths, const cv::Mat1f& depth,
           (*false_neg)++;
         }
       } else if (!std::isnan(idepths(ii, jj))) {
-        float idepth_est = idepths(ii, jj);
-        float error = fu::fast_abs(idepth_est);
+        float idepth_est        = idepths(ii, jj);
+        float error             = fu::fast_abs(idepth_est);
         (*idepth_error)(ii, jj) = error;
         *total_error += error;
 
@@ -378,4 +354,4 @@ void getDepthConfusionMatrix(const cv::Mat1f& idepths, const cv::Mat1f& depth,
   return;
 }
 
-}  // namespace flame_ros
+} // namespace flame_ros

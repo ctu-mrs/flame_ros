@@ -19,6 +19,7 @@ from launch.substitutions import (
 import launch
 
 import os
+import sys
 
 def generate_launch_description():
 
@@ -89,12 +90,89 @@ def generate_launch_description():
 
     # #} end of custom_config
 
+    # #{ world_frame
+
+    world_frame = LaunchConfiguration('world_frame')
+
+    ld.add_action(DeclareLaunchArgument(
+        'world_frame',
+        default_value=[uav_name, "/local_origin"],
+        description='The frame id of the world frame for the mapping.'
+    ))
+
+    # #} end of world_frame
+
+    # #{ body_frame
+
+    body_frame = LaunchConfiguration('body_frame')
+
+    ld.add_action(DeclareLaunchArgument(
+        'body_frame',
+        default_value=[uav_name, "/fcu"],
+        description='The UAV body frame'
+    ))
+
+    # #} end of world_frame
+
+    # #{ camera_frame
+
+    camera_frame = LaunchConfiguration('camera_frame')
+
+    ld.add_action(DeclareLaunchArgument(
+        'camera_frame',
+        default_value="",
+        description='If non-empty -> overrides camera frame'
+    ))
+
+    # #} end of world_frame
+
+    # #{ path_frame
+
+    path_frame = LaunchConfiguration('path_frame')
+
+    ld.add_action(DeclareLaunchArgument(
+        'path_frame',
+        default_value="",
+        description='If non-empty -> overrides path frame'
+    ))
+
+    # #} end of world_frame
+
+    # #{ odom_topic
+
+    odom_topic = LaunchConfiguration('odom_topic')
+
+    ld.add_action(DeclareLaunchArgument(
+        'odom_topic',
+        default_value="~/odom_in",
+        description='Odometry input topic'
+    ))
+
+    # #} end of world_frame
+
+    # #{ path_topic
+
+    path_topic = LaunchConfiguration('path_topic')
+
+    ld.add_action(DeclareLaunchArgument(
+        'path_topic',
+        default_value="~/path_in",
+        description='Path input topic'
+    ))
+
+    # #} end of world_frame
+
     node = ComposableNode(
         package='flame_ros',
         plugin='flame_ros::FlameRos',
         name='flame',
         namespace=uav_name,
         parameters=[
+            {"uav_name": uav_name},
+            {"world_frame": world_frame},
+            {"body_frame": body_frame},
+            {"camera_frame": camera_frame},
+            {"path_frame": path_frame},
             {"use_sim_time": True},
             {"default_config": this_pkg_path + "/config/default.yaml"},
             {"custom_config": custom_config},
@@ -103,6 +181,8 @@ def generate_launch_description():
             # subscribers
             ('~/image_in', [camera_topic, '/image_raw']),
             ('~/camera_info', [camera_topic, '/camera_info']),
+            ('~/odom_in', odom_topic),
+            ('~/path_in', path_topic),
             # publishers
             ('~/mesh_out', '~/mesh'),
             ('~/cloud_out', '~/cloud'),
@@ -131,9 +211,7 @@ def generate_launch_description():
         package='rclcpp_components',
         executable='component_container_mt',
         output="screen",
-        #prefix='xterm -e gdb -ex run --args',
-        # prefix='gdb -ex run --args',
-        # prefix='valgrind --tool=massif',
+        # prefix=['debug_roslaunch ' + os.ttyname(sys.stdout.fileno())],
         composable_node_descriptions=[node],
         parameters=[
             {'use_intra_process_comms': True},

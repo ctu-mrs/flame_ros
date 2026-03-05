@@ -46,12 +46,14 @@
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <pcl_msgs/msg/polygon_mesh.hpp>
 
-namespace flame_ros {
+namespace flame_ros
+{
 
 /**
  * @breif Struct to hold mesh vertex data.
  */
-struct PointNormalUV {
+struct PointNormalUV
+{
   PCL_ADD_POINT4D
   PCL_ADD_NORMAL4D
   float u; // Texture coordinates.
@@ -76,67 +78,40 @@ struct PointNormalUV {
 /**
  * @brief Publish stats message for FlameNodelet.
  */
-void publishFlameNodeletStats(mrs_lib::PublisherHandler<flame_ros_msgs::msg::FlameNodeletStats>& pub,
-                              int img_id, double time,
-                              const std::unordered_map<std::string, double>& stats,
-                              const std::unordered_map<std::string, double>& timings);
+void publishFlameNodeletStats(mrs_lib::PublisherHandler<flame_ros_msgs::msg::FlameNodeletStats> &pub, int img_id, double time,
+                              const std::unordered_map<std::string, double> &stats, const std::unordered_map<std::string, double> &timings);
 
 /**
  * @brief Publish stats message for Flame.
  */
-void publishFlameStats(mrs_lib::PublisherHandler<flame_ros_msgs::msg::FlameStats>& pub,
-                       int img_id, double time,
-                       const std::unordered_map<std::string, double>& stats,
-                       const std::unordered_map<std::string, double>& timings);
+void publishFlameStats(mrs_lib::PublisherHandler<flame_ros_msgs::msg::FlameStats> &pub, int img_id, double time,
+                       const std::unordered_map<std::string, double> &stats, const std::unordered_map<std::string, double> &timings);
 
 /**
  * @brief Publish mesh.
  */
-void publishDepthMesh(mrs_lib::PublisherHandler<pcl_msgs::msg::PolygonMesh>& mesh_pub,
-                      const std::string& frame_id,
-                      double time,
-                      const Eigen::Matrix3f& Kinv,
-                      const std::vector<cv::Point2f>& vertices,
-                      const std::vector<float>& idepths,
-                      const std::vector<Eigen::Vector3f>& normals,
-                      const std::vector<flame::Triangle>& triangles,
-                      const std::vector<bool>& tri_validity,
-                      const cv::Mat3b& rgb);
+void publishDepthMesh(mrs_lib::PublisherHandler<pcl_msgs::msg::PolygonMesh> &mesh_pub, const std::string &frame_id, double time, const Eigen::Matrix3f &Kinv,
+                      const std::vector<cv::Point2f> &vertices, const std::vector<float> &idepths, const std::vector<Eigen::Vector3f> &normals,
+                      const std::vector<flame::Triangle> &triangles, const std::vector<bool> &tri_validity, const cv::Mat3b &rgb);
 
 /**
  * @brief Publish depthmap.
  */
-void publishDepthMap(image_transport::CameraPublisher& pub,
-                     const std::string& frame_id,
-                     double time, const Eigen::Matrix3f& K,
-                     const cv::Mat1f& depth_est);
+void publishDepthMap(image_transport::CameraPublisher &pub, const std::string &frame_id, double time, const Eigen::Matrix3f &K, const cv::Mat1f &depth_est);
 
 /**
  * @brief Publish point cloud.
  */
-void publishPointCloud(mrs_lib::PublisherHandler<sensor_msgs::msg::PointCloud2>& pub,
-                       const std::string& frame_id,
-                       double time, const Eigen::Matrix3f& K,
-                       const cv::Mat1f& depth_est,
-                       float min_depth = 0.0f,
-                       float max_depth = std::numeric_limits<float>::max());
+void publishPointCloud(mrs_lib::PublisherHandler<sensor_msgs::msg::PointCloud2> &pub, const std::string &frame_id, double time, const Eigen::Matrix3f &K,
+                       const cv::Mat1f &depth_est, float min_depth = 0.0f, float max_depth = std::numeric_limits<float>::max());
 
 /**
  * @brief Compute confusion matrix using ground truth depths.
  */
-void getDepthConfusionMatrix(const cv::Mat1f& idepths, const cv::Mat1f& depth,
-                             cv::Mat1f* idepth_error, float* total_error,
-                             int* true_pos, int* true_neg,
-                             int* false_pos, int* false_neg);
+void getDepthConfusionMatrix(const cv::Mat1f &idepths, const cv::Mat1f &depth, cv::Mat1f *idepth_error, float *total_error, int *true_pos, int *true_neg,
+                             int *false_pos, int *false_neg);
 
-}  // namespace flame_ros
+} // namespace flame_ros
 
-POINT_CLOUD_REGISTER_POINT_STRUCT(flame_ros::PointNormalUV,
-                                  (float, x, x)
-                                  (float, y, y)
-                                  (float, x, z)
-                                  (float, normal_x, normal_x)
-                                  (float, normal_y, normal_y)
-                                  (float, normal_z, normal_z)
-                                  (float, u, u)
-                                  (float, v, v))
+POINT_CLOUD_REGISTER_POINT_STRUCT(flame_ros::PointNormalUV, (float, x, x)(float, y, y)(float, x, z)(float, normal_x, normal_x)(float, normal_y, normal_y)(
+                                                                float, normal_z, normal_z)(float, u, u)(float, v, v))

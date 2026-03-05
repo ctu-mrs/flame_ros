@@ -1,11 +1,11 @@
 input:
-  camera_frame_id: uav1/stereo_left
-  camera_world_frame_id: uav1/local_origin
-  subsample_factor: 1 # Process one out of this many images.
-  poseframe_subsample_factor: 6 # Create pf every this number of images. Ignored if use_poseframe_updates is true.
-  use_poseframe_updates: False # Listen to updates for poseframe poses.
-  poseframe_child_frame_id: uav1/fcu # Frame of pose information in pf messages.
-  resize_factor: 1 # Downsample image width/height by this factor.
+  use_poseframe_updates: false
+
+  # Downsample image width/height by this factor.
+  resize_factor: 1
+
+  # when subscribing to odometry, limit how long the path constructed out of the odometry is
+  max_path_length: 1.0 # [s]
 
 output:
   quiet: true # Turn off terminal output.
@@ -15,6 +15,7 @@ output:
   cloud: true # Publish pointcloud sensor_msgs/PointCloud2. Prefer mesh or depthmap (in that order).
   features: false # Publish raw features points as sensors_msgs/Image.
   stats: false # Publish statistics message.
+  undistort: false # Publish undistorted image
 
   # Integrate load measurements over this many frames before reporting. Timing
   # resolution of /proc is only a Jiffy (usually 0.01 sec), so querying faster
@@ -29,19 +30,19 @@ output:
 
   # Filter out oblique triangles for display. This does not change the
   # underlying graph - it only affects the output/display.
-  filter_oblique_triangles: True
-  oblique_normal_thresh: 1.57 # 1.39626 # 80 degress in radians.
+  filter_oblique_triangles: true
+  oblique_normal_thresh: 1.57
   oblique_idepth_diff_factor: 0.35 # Relative difference between max/min triangle idepth.
   oblique_idepth_diff_abs: 0.1 # Absolute difference between max/min triangle idepth.
 
   # Filter out triangles with long edges for display. This does not change the
   # underlying graph - it only affects the output/display.
-  filter_long_edges: True
+  filter_long_edges: true
   edge_length_thresh: 0.333 # As a fraction of image width.
 
   # Filter out triangles that are far from the camera for display. This does not
   # change the underlying graph - it only affects the output/display.
-  filter_triangles_by_idepth: True
+  filter_triangles_by_idepth: true
   min_triangle_idepth: 0.01
 
   # Don't publish output if angular rate exceeds this threshold. Will be ignored if 0.
@@ -59,7 +60,7 @@ debug:
 
 threading:
   openmp:
-    num_threads: 4 # Number of threads used in parallel sections.
+    num_threads: 1 # Number of threads used in parallel sections.
     chunk_size: 1024 # Number of items given to each thread.
 
 features:
@@ -70,8 +71,8 @@ features:
     win_size: 16 # Detection grid resolution (win_size x win_size).
   tracking:
     win_size: 5 # Feature tracking window size. If not using LK, must be odd.
-    max_dropouts: 10 # Max number of missed detections before feature is killed.
-    epipolar_line_var: 10.0 # Epipolar line noise variance.
+    max_dropouts: 5 # Max number of missed detections before feature is killed.
+    epipolar_line_var: 4.0 # Epipolar line noise variance.
 
 regularization:
   do_median_filter: false # Apply median filter on graph.
@@ -88,4 +89,4 @@ regularization:
     theta: 0.25 # Extra-gradient step size.
     min_height: -100000000000000.0 # Minimum height of features that are added to graph.
     max_height: 100000000000000.0 # Maximum height of features that are added to graph.
-    check_sticky_obstacles: True
+    check_sticky_obstacles: false

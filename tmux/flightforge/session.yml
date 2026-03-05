@@ -5,13 +5,13 @@ socket_name: mrs
 attach: false
 tmux_options: -f /etc/ctu-mrs/tmux.conf
 # you can modify these
-startup_window: simulator
-pre_window: export UAV_NAME=uav1; export USE_SIM_TIME="true"; export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+startup_window: flame
+pre_window: export UAV_NAME=uav1; export USE_SIM_TIME="true"; export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 windows:
-  # - router:
-  #     layout: tiled
-  #     panes:
-  #       - ros2 run rmw_zenoh_cpp rmw_zenohd
+  - router:
+      layout: tiled
+      panes:
+        - ros2 run rmw_zenoh_cpp rmw_zenohd
   - simulator:
       layout: tiled
       panes:
@@ -39,7 +39,7 @@ windows:
   - flame:
       layout: tiled
       panes:
-        - ros2 launch flame_ros flame_ros.launch.py
+        - ros2 launch flame_ros flame_ros.launch.py odom_topic:=/$UAV_NAME/estimation_manager/odom_main
   # - stereo:
   #     layout: tiled
   #     panes:
