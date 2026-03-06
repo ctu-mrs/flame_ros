@@ -1,11 +1,21 @@
 input:
+
   # Downsample image width/height by this factor.
   resize_factor: 2
 
-  max_poseframe_length: 10 # [-]
+  max_poseframe_length: 20 # [-] How many poseframes to keep in history
   poseframe_mod_factor: 3 # [-] use 1 in N images for poseframe {reconfigurable}
 
+  undistort:
+
+    enabled: true
+
+    custom_fisheye_model:
+      enabled: true
+      balance: 1.0
+
 output:
+
   quiet: true # Turn off terminal output.
   mesh: true # Publish mesh as pcl_msgs/PolygonMesh.
   idepthmap: false # Publish idepthmap as sensor_msgs/Image.
@@ -13,7 +23,7 @@ output:
   cloud: true # Publish pointcloud sensor_msgs/PointCloud2. Prefer mesh or depthmap (in that order).
   features: false # Publish raw features points as sensors_msgs/Image.
   stats: false # Publish statistics message.
-  undistort: false # Publish undistorted image
+  undistort: true # Publish undistorted image
 
   # Integrate load measurements over this many frames before reporting. Timing
   # resolution of /proc is only a Jiffy (usually 0.01 sec), so querying faster
@@ -44,7 +54,9 @@ output:
   min_triangle_idepth: 0.01
 
   # Don't publish output if angular rate exceeds this threshold. Will be ignored if 0.
-  max_angular_rate: 0.0 # deg/sec
+  max_angular_rate: 60.0 # deg/sec
+
+  cloud_decimation: 0.2 # [m]
 
 debug:
   wireframe: false # Mesh wireframe colored by idepth.

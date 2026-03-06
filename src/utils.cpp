@@ -25,6 +25,7 @@
 #include <cv_bridge/cv_bridge.hpp>
 
 #include <pcl_conversions/pcl_conversions/pcl_conversions.h>
+#include <pcl/filters/voxel_grid.h>
 
 #include <flame/utils/image_utils.h>
 #include <flame/utils/visualization.h>
@@ -268,11 +269,12 @@ void publishPointCloud(mrs_lib::PublisherHandler<sensor_msgs::msg::PointCloud2> 
   int height = depth_est.rows;
   int width  = depth_est.cols;
 
-  pcl::PointCloud<pcl::PointXYZ> cloud;
-  cloud.width    = width;
-  cloud.height   = height;
-  cloud.is_dense = false;
-  cloud.points.resize(width * height);
+  pcl::PointCloud<pcl::PointXYZ>::Ptr cloud = pcl::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
+
+  cloud->width    = width;
+  cloud->height   = height;
+  cloud->is_dense = false;
+  cloud->points.resize(width * height);
 
   Eigen::Matrix3f Kinv(K.inverse());
   for (int ii = 0; ii < height; ++ii) {
@@ -284,23 +286,31 @@ void publishPointCloud(mrs_lib::PublisherHandler<sensor_msgs::msg::PointCloud2> 
       if (std::isnan(depth) || (depth < min_depth) || (depth > max_depth)) {
         // Add invalid value to skip this point. Note that the initial value
         // is (0, 0, 0), so you must manually invalidate the point.
-        cloud.points[idx].x = std::numeric_limits<float>::quiet_NaN();
-        cloud.points[idx].y = std::numeric_limits<float>::quiet_NaN();
-        cloud.points[idx].z = std::numeric_limits<float>::quiet_NaN();
+        cloud->points[idx].x = std::numeric_limits<float>::quiet_NaN();
+        cloud->points[idx].y = std::numeric_limits<float>::quiet_NaN();
+        cloud->points[idx].z = std::numeric_limits<float>::quiet_NaN();
         continue;
       }
 
       Eigen::Vector3f xyz(jj * depth, ii * depth, depth);
       xyz = Kinv * xyz;
 
-      cloud.points[idx].x = xyz(0);
-      cloud.points[idx].y = xyz(1);
-      cloud.points[idx].z = xyz(2);
+      cloud->points[idx].x = xyz(0);
+      cloud->points[idx].y = xyz(1);
+      cloud->points[idx].z = xyz(2);
     }
   }
 
+  pcl::VoxelGrid<pcl::PointXYZ> voxel_filter;
+
+  voxel_filter.setInputCloud(cloud);
+
+  voxel_filter.setLeafSize(0.4, 0.4, 0.4);
+
+  voxel_filter.filter(*cloud);
+
   sensor_msgs::msg::PointCloud2::SharedPtr msg(new sensor_msgs::msg::PointCloud2());
-  pcl::toROSMsg(cloud, *msg);
+  pcl::toROSMsg(*cloud, *msg);
 
   msg->header = std_msgs::msg::Header();
 

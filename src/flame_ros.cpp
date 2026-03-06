@@ -151,6 +151,7 @@ private:
   flame::Params                 params_;
   std::shared_ptr<flame::Flame> sensor_;
 
+  double   _undistort_balance_;
   cv::Mat  K, D, undistort_K;
   cv::Mat  map1, map2;
   cv::Size img_size;
@@ -184,15 +185,16 @@ private:
   int                                                               load_integration_factor_;
 
   bool publish_undistort_;
+  void publishUndistortedImage(const cv::Mat3b &rgb, const std_msgs::msg::Header &orig_header);
 
   // Publishes debug images.
-  image_transport::Publisher debug_undistort_;
-  image_transport::Publisher debug_wireframe_pub_;
-  image_transport::Publisher debug_features_pub_;
-  image_transport::Publisher debug_detections_pub_;
-  image_transport::Publisher debug_matches_pub_;
-  image_transport::Publisher debug_normals_pub_;
-  image_transport::Publisher debug_idepthmap_pub_;
+  image_transport::CameraPublisher debug_undistort_;
+  image_transport::Publisher       debug_wireframe_pub_;
+  image_transport::Publisher       debug_features_pub_;
+  image_transport::Publisher       debug_detections_pub_;
+  image_transport::Publisher       debug_matches_pub_;
+  image_transport::Publisher       debug_normals_pub_;
+  image_transport::Publisher       debug_idepthmap_pub_;
 
 #ifdef FLAME_WITH_FLA
   uint8_t        node_id_;
@@ -299,6 +301,8 @@ void FlameRos::initialize() {
   param_loader.loadParam("world_frame", _world_frame_);
   param_loader.loadParam("body_frame", _body_frame_);
   param_loader.loadParam("input/resize_factor", resize_factor_);
+
+  param_loader.loadParam("input/undistort/custom_fisheye_model/balance", _undistort_balance_);
 
   dynparam_mgr_->register_param("input/max_poseframe_length", &drs_params_.max_pose_frames);
   dynparam_mgr_->register_param("input/poseframe_mod_factor", &drs_params_.poseframe_mod_factor);
@@ -437,7 +441,7 @@ void FlameRos::initialize() {
     nodelet_stats_pub_ = mrs_lib::PublisherHandler<flame_ros_msgs::msg::FlameNodeletStats>(this_node_ptr(), "~/nodelet_stats_out");
   }
   if (publish_undistort_) {
-    debug_undistort_ = it_->advertise("~/debug/undistort", 1);
+    debug_undistort_ = it_->advertiseCamera("~/debug/undistorted/image_raw", 1);
   }
 
   if (params_.debug_draw_wireframe) {
@@ -505,24 +509,23 @@ void FlameRos::callbackCamera(const std::shared_ptr<const sensor_msgs::msg::Imag
 
     img_size = {width_, height_};
 
-    // Estimate new camera matrix for the undistorted view
-    /* cv::fisheye::estimateNewCameraMatrixForUndistortRectify(K, D, img_size, cv::Mat::eye(3, 3, CV_64F), undistort_K, 0.5); */
+    cv::Mat D_test = cv::Mat::zeros(4, 1, CV_64F);
 
-    cv::Mat E = cv::Mat::eye(3, 3, cv::DataType<double>::type);
+    // Estimate new camera matrix for the undistorted view
+    cv::fisheye::estimateNewCameraMatrixForUndistortRectify(K, D_test, img_size, cv::Mat::eye(3, 3, CV_64F), undistort_K, _undistort_balance_);
 
     // Create lookup tables for remapping
-    cv::fisheye::initUndistortRectifyMap(K, D, E, K, img_size, CV_16SC2, map1, map2);
+    cv::fisheye::initUndistortRectifyMap(K, D, cv::Mat::eye(3, 3, cv::DataType<double>::type), undistort_K, img_size, CV_16SC2, map1, map2);
 
-    std::cout << "K = " << K << std::endl;
-    /* std::cout << "undistort_K" << undistort_K << std::endl; */
+    K = undistort_K;
 
     for (int ii = 0; ii < 3; ++ii) {
       for (int jj = 0; jj < 3; ++jj) {
-        K_(ii, jj) = K.at<double>(ii, jj);
+        K_(ii, jj) = undistort_K.at<double>(ii, jj);
       }
     }
 
-    if (K_(0, 0) <= 0) {
+    if (K_(0, 0) <= 1.0) {
       RCLCPP_ERROR(this_node_ptr()->get_logger(), "Camera intrinsics matrix is probably invalid!\n");
       RCLCPP_ERROR_STREAM(this_node_ptr()->get_logger(), "K = " << std::endl << K_);
       return;
@@ -561,17 +564,7 @@ void FlameRos::callbackCamera(const std::shared_ptr<const sensor_msgs::msg::Imag
       // High-speed remapping
       cv::remap(rgb, rgb, map1, map2, cv::INTER_LINEAR, cv::BORDER_CONSTANT);
 
-      if (publish_undistort_) {
-
-        std_msgs::msg::Header hdr;
-        hdr.stamp.sec     = 0;
-        hdr.stamp.nanosec = 0;
-        hdr.frame_id      = live_frame_id_;
-
-        sensor_msgs::msg::Image::ConstSharedPtr debug_img_msg = cv_bridge::CvImage(hdr, "bgr8", rgb).toImageMsg();
-
-        debug_undistort_.publish(debug_img_msg);
-      }
+      publishUndistortedImage(rgb, rgb_msg->header);
     }
 
     /* cv::Mat1f Kcv, Dcv; */
@@ -652,7 +645,7 @@ void FlameRos::processFrame(const uint32_t img_id, const std::string &cam_frame_
 
   poses_ids_.insert(poses_ids_.begin(), img_id);
 
-  if (poses_ids_.size() > drs_params.max_pose_frames) {
+  if (int(poses_ids_.size()) > drs_params.max_pose_frames) {
 
     poses_ids_.pop_back();
 
@@ -824,6 +817,67 @@ void FlameRos::processFrame(const uint32_t img_id, const std::string &cam_frame_
     RCLCPP_INFO(this_node_ptr()->get_logger(), "FlameRos/process_frame = %4.1fms\n", stats_.timings("process_frame"));
 
   return;
+}
+
+//}
+
+/* publishUndistortedImage() //{ */
+
+void FlameRos::publishUndistortedImage(const cv::Mat3b &rgb, const std_msgs::msg::Header &orig_header) {
+
+  if (!publish_undistort_) {
+    return;
+  }
+
+  sensor_msgs::msg::Image::ConstSharedPtr debug_img_msg = cv_bridge::CvImage(orig_header, "bgr8", rgb).toImageMsg();
+
+  sensor_msgs::msg::CameraInfo cam_info;
+
+  for (int i = 0; i < 3; i++) {
+    for (int j = 0; j < 3; j++) {
+      cam_info.k[i + j * 3] = K.at<double>(i, j);
+    }
+  }
+
+  cam_info.header = orig_header;
+
+  cam_info.distortion_model = "plumb_bob";
+
+  cam_info.height = rgb.rows;
+  cam_info.width  = rgb.cols;
+
+  cam_info.d.resize(5);
+  cam_info.d[0] = 0;
+  cam_info.d[1] = 0;
+  cam_info.d[2] = 0;
+  cam_info.d[3] = 0;
+  cam_info.d[4] = 0;
+
+  // rectification
+  cam_info.r[0] = 1.0;
+  cam_info.r[1] = 0.0;
+  cam_info.r[2] = 0.0;
+  cam_info.r[3] = 0.0;
+  cam_info.r[4] = 1.0;
+  cam_info.r[5] = 0.0;
+  cam_info.r[6] = 0.0;
+  cam_info.r[7] = 0.0;
+  cam_info.r[8] = 1.0;
+
+  cam_info.p[0]  = cam_info.k[0];
+  cam_info.p[1]  = 0.0;
+  cam_info.p[2]  = cam_info.k[2];
+  cam_info.p[3]  = 0.0;
+  cam_info.p[4]  = 0.0;
+  cam_info.p[5]  = cam_info.k[4];
+  cam_info.p[6]  = cam_info.k[5];
+  cam_info.p[7]  = 0.0;
+  cam_info.p[8]  = 0.0;
+  cam_info.p[9]  = 0.0;
+  cam_info.p[10] = 1.0;
+  cam_info.p[11] = 0.0;
+
+  debug_undistort_.publish(*debug_img_msg, cam_info);
 }
 
 //}
