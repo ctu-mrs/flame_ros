@@ -39,7 +39,7 @@ windows:
   - flame:
       layout: tiled
       panes:
-        - ros2 launch flame_ros flame_ros.launch.py odom_topic:=/$UAV_NAME/estimation_manager/odom_main
+        - ros2 launch flame_ros flame_ros.launch.py
   # - stereo:
   #     layout: tiled
   #     panes:
