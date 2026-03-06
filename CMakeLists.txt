@@ -59,7 +59,6 @@ include_directories(
 
 add_library(FlameRos_Flame SHARED
   src/flame_ros.cpp
-  src/utils.cpp
 )
 
 rclcpp_components_register_node(

@@ -65,7 +65,32 @@ def generate_launch_description():
             )
 
     # #} end of custom_config
-    
+
+    # #{ calibration_file
+
+    calibration_file = LaunchConfiguration('calibration_file')
+
+    # this adds the args to the list of args available for this launch files
+    # these args can be listed at runtime using -s flag
+    # default_value is required to if the arg is supposed to be optional at launch time
+    ld.add_action(DeclareLaunchArgument(
+        'calibration_file',
+        default_value=[this_pkg_path, "/config/calibration.yaml"],
+        description="Path to the calibratin configuration file. The path can be absolute, starting with '/' or relative to the current working directory",
+        ))
+
+    # behaviour:
+    #     calibration_file == "" => calibration_file: ""
+    #     calibration_file == "/<path>" => calibration_file: "/<path>"
+    #     calibration_file == "<path>" => calibration_file: "$(pwd)/<path>"
+    calibration_file = IfElseSubstitution(
+            condition=PythonExpression(['"', calibration_file, '" != "" and ', 'not "', calibration_file, '".startswith("/")']),
+            if_value=PathJoinSubstitution([EnvironmentVariable('PWD'), calibration_file]),
+            else_value=calibration_file
+            )
+
+    # #} end of calibration_file
+
     # #{ camera
 
     camera_topic = LaunchConfiguration('camera_topic')
@@ -175,14 +200,13 @@ def generate_launch_description():
             {"path_frame": path_frame},
             {"use_sim_time": True},
             {"default_config": this_pkg_path + "/config/default.yaml"},
+            {"calibration_file": calibration_file},
             {"custom_config": custom_config},
         ],
         remappings=[
             # subscribers
             ('~/image_in', [camera_topic, '/image_raw']),
             ('~/camera_info', [camera_topic, '/camera_info']),
-            ('~/odom_in', odom_topic),
-            ('~/path_in', path_topic),
             # publishers
             ('~/mesh_out', '~/mesh'),
             ('~/cloud_out', '~/cloud'),

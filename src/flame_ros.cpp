@@ -1,5 +1,7 @@
 /* includes //{ */
 
+#include <rclcpp/rclcpp.hpp>
+
 #include <mrs_lib/param_loader.h>
 #include <mrs_lib/subscriber_handler.h>
 #include <mrs_lib/publisher_handler.h>
@@ -10,10 +12,6 @@
 #include <mrs_lib/mutex.h>
 
 #include <ros_sensor_streams/conversions.h>
-
-#include <flame/utils/image_utils.h>
-#include <flame/utils/stats_tracker.h>
-#include <flame/utils/load_tracker.h>
 
 #include <flame/flame.h>
 #include <flame/params.h>
@@ -26,8 +24,6 @@
 
 #include <cv_bridge/cv_bridge.hpp>
 
-#include <flame_ros/utils.hpp>
-
 #include <opencv2/core/eigen.hpp>
 
 #include <rclcpp/rclcpp.hpp>
@@ -36,9 +32,6 @@
 
 #include <mrs_lib/attitude_converter.h>
 
-#include <memory>
-#include <string>
-
 #include <image_transport/image_transport.hpp>
 #include <image_transport/camera_subscriber.hpp>
 
@@ -46,6 +39,7 @@
 
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/msg/camera_info.hpp>
+#include <sensor_msgs/msg/point_cloud2.hpp>
 
 #include <Eigen/Core>
 #include <Eigen/Geometry>
@@ -58,47 +52,99 @@
 
 #include <opencv2/calib3d.hpp>
 
+#include <cv_bridge/cv_bridge.hpp>
+
+#include <pcl/point_types.h>
+#include <pcl_conversions/pcl_conversions/pcl_conversions.h>
+#include <pcl/filters/voxel_grid.h>
+#include <pcl_msgs/msg/polygon_mesh.hpp>
+
+#include <flame/utils/image_utils.h>
+#include <flame/utils/visualization.h>
+#include <flame/utils/triangulator.h>
+#include <flame/utils/stats_tracker.h>
+#include <flame/utils/load_tracker.h>
+
+#include <flame_ros_msgs/msg/flame_nodelet_stats.hpp>
+#include <flame_ros_msgs/msg/flame_stats.hpp>
+
+#include <string>
+#include <limits>
+#include <memory>
+#include <string>
+
+#include <opencv2/core/core.hpp>
+
+#include <Eigen/Core>
+
+#include <image_transport/camera_publisher.hpp>
+
+#include <mrs_lib/publisher_handler.h>
+
+#include <flame_ros_msgs/msg/flame_nodelet_stats.hpp>
+#include <flame_ros_msgs/msg/flame_stats.hpp>
+
 //}
 
 /* defines //{ */
 
 #define NODE_NAME "flame"
 
+#define PCL_NO_PRECOMPILE
+
+//}
+
+namespace fu = flame::utils;
+
+/* structs //{ */
+
+namespace flame_ros
+{
+
+/**
+ * @breif Struct to hold mesh vertex data.
+ */
+struct PointNormalUV
+{
+  PCL_ADD_POINT4D
+  PCL_ADD_NORMAL4D
+  float u; // Texture coordinates.
+  float v;
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+} EIGEN_ALIGN16;
+
+} // namespace flame_ros
+
+POINT_CLOUD_REGISTER_POINT_STRUCT(flame_ros::PointNormalUV, (float, x, x)(float, y, y)(float, x, z)(float, normal_x, normal_x)(float, normal_y, normal_y)(
+                                                                float, normal_z, normal_z)(float, u, u)(float, v, v))
+
 //}
 
 namespace flame_ros
 {
 
-namespace fu = flame::utils;
+/* class FlameRos //{ */
 
 void crash_handler(int /*sig*/) {
   FLAME_ASSERT(false);
   return;
 }
 
-/* class FlameRos //{ */
-
 class FlameRos : public mrs_lib::Node {
 public:
   FlameRos(const rclcpp::NodeOptions &options);
 
 private:
-  bool is_initialized_;
+  bool is_initialized_ = false;
   void initialize();
   void callbackCamera(const std::shared_ptr<const sensor_msgs::msg::Image> &rgb_msg, const std::shared_ptr<const sensor_msgs::msg::CameraInfo> &info);
   void processFrame(const uint32_t img_id, const std::string &cam_frame_id, const double time, const Sophus::SE3f &pose, const cv::Mat3b &rgb);
 
+  rclcpp::Node::SharedPtr  node_;
+  rclcpp::Clock::SharedPtr clock_;
+
   // // Convenience alias.
   // using Frame = ros_sensor_streams::TrackedImageStream::Frame;
-
-#ifdef FLAME_WITH_FLA
-  enum Status
-  {
-    GOOD          = 0,
-    ALARM_TIMEOUT = 2,
-    FAIL_TIMEOUT  = 3,
-  };
-#endif
 
   // Keeps track of stats and load.
   fu::StatsTracker stats_;
@@ -117,16 +163,7 @@ private:
   std::string _camera_frame_;
   std::string _path_frame_;
 
-  double _max_poseframe_length_;
-
-  int poseframe_subsample_factor_ = 1; // Create a poseframe every this number of images.
-  int resize_factor_;                  // Factor to resize image. resize_factor_ = 2 will downsample by 2 in each dimension.
-                                       //
-  bool _override_camera_frame_ = false;
-  bool _override_path_frame_   = false;
-
-  // Use an external calibration instead of what's in the camera_info message.
-  bool use_external_cal_;
+  double resize_factor_;
 
   // Input stream object.
   // std::shared_ptr<ros_sensor_streams::TrackedImageStream> input_;
@@ -140,8 +177,6 @@ private:
   rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr     poseframe_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
 
-  nav_msgs::msg::Path::SharedPtr odom_path;
-
   // Stuff for checking angular rates.
   float        max_angular_rate_;
   double       prev_time_;
@@ -151,10 +186,9 @@ private:
   flame::Params                 params_;
   std::shared_ptr<flame::Flame> sensor_;
 
-  double   _undistort_balance_;
-  cv::Mat  K, D, undistort_K;
-  cv::Mat  map1, map2;
-  cv::Size img_size;
+  double  _undistort_balance_;
+  cv::Mat _custom_fisheye_undistorted_K_;
+  cv::Mat map1, map2;
 
   std::vector<uint32_t> poses_ids_;
 
@@ -196,27 +230,18 @@ private:
   image_transport::Publisher       debug_normals_pub_;
   image_transport::Publisher       debug_idepthmap_pub_;
 
-#ifdef FLAME_WITH_FLA
-  uint8_t        node_id_;
-  double         heart_beat_dt_;
-  double         alarm_timeout_;
-  double         fail_timeout_;
-  ros::Timer     heart_beat_;
-  ros::Publisher heart_beat_pub_;
-  double         last_update_sec_;
-#endif
+  bool inited_ = false;
 
-  // Messages in the ROS2 does not have "seq" field in the header.
-  // We have to replace it by the counter in the subscriber.
-  unsigned long int pose_frame_id;
-
-  bool inited_;
-  bool undistort_; // Whether to undistort images.
+  bool _undistort_enabled_; // Whether to undistort images.
+  bool _undistort_fisheye_enabled_;
+  int  _custom_fisheye_expected_width_;
+  int  _custom_fisheye_expected_height_;
 
   std::string     live_frame_id_;
-  int             width_;
-  int             height_;
+  int             width_  = 0;
+  int             height_ = 0;
   Eigen::Matrix3f K_; // Camera intrinsics.
+  Eigen::Matrix3f K_resized_; // Camera intrinsics.
   Eigen::VectorXf D_; // Distortion params: k1, k2, p1, p2, k3.
 
   std::shared_ptr<image_transport::ImageTransport> image_transport_;
@@ -232,21 +257,57 @@ private:
 
   struct Params_t
   {
-    int max_pose_frames;
-    int poseframe_mod_factor;
+    int    max_pose_frames;
+    int    poseframe_mod_factor;
+    double cloud_decimation;
   };
 
   Params_t   drs_params_;
   std::mutex mutex_drs_params_;
+
+  /**
+   * @brief Publish stats message for FlameNodelet.
+   */
+  void publishFlameNodeletStats(mrs_lib::PublisherHandler<flame_ros_msgs::msg::FlameNodeletStats> &pub, int img_id, double time,
+                                const std::unordered_map<std::string, double> &stats, const std::unordered_map<std::string, double> &timings);
+
+  /**
+   * @brief Publish stats message for Flame.
+   */
+  void publishFlameStats(mrs_lib::PublisherHandler<flame_ros_msgs::msg::FlameStats> &pub, int img_id, double time,
+                         const std::unordered_map<std::string, double> &stats, const std::unordered_map<std::string, double> &timings);
+
+  /**
+   * @brief Publish mesh.
+   */
+  void publishDepthMesh(mrs_lib::PublisherHandler<pcl_msgs::msg::PolygonMesh> &mesh_pub, const std::string &frame_id, double time, const Eigen::Matrix3f &Kinv,
+                        const std::vector<cv::Point2f> &vertices, const std::vector<float> &idepths, const std::vector<Eigen::Vector3f> &normals,
+                        const std::vector<flame::Triangle> &triangles, const std::vector<bool> &tri_validity, const cv::Mat3b &rgb);
+
+  /**
+   * @brief Publish depthmap.
+   */
+  void publishDepthMap(const image_transport::CameraPublisher &pub, const std::string &frame_id, double time, const Eigen::Matrix3f &K,
+                       const cv::Mat1f &depth_est);
+
+  /**
+   * @brief Publish point cloud.
+   */
+  void publishPointCloud(mrs_lib::PublisherHandler<sensor_msgs::msg::PointCloud2> &pub, const std::string &frame_id, double time, const Eigen::Matrix3f &K,
+                         const cv::Mat1f &depth_est, float min_depth = 0.0f, float max_depth = std::numeric_limits<float>::max());
+
+  /**
+   * @brief Compute confusion matrix using ground truth depths.
+   */
+  void getDepthConfusionMatrix(const cv::Mat1f &idepths, const cv::Mat1f &depth, cv::Mat1f *idepth_error, float *total_error, int *true_pos, int *true_neg,
+                               int *false_pos, int *false_neg);
 };
 
 //}
 
 /* constructor //{ */
 
-FlameRos::FlameRos(const rclcpp::NodeOptions &options)
-    : mrs_lib::Node(NODE_NAME, options), is_initialized_(false), resize_factor_(1), use_external_cal_(true), odom_path(nullptr), pose_frame_id(0),
-      inited_(false), undistort_(true), live_frame_id_(), width_(0), height_(0), K_(), D_(5), cam_sub_() {
+FlameRos::FlameRos(const rclcpp::NodeOptions &options) : mrs_lib::Node(NODE_NAME, options), live_frame_id_(), D_(5), cam_sub_() {
   initialize();
 }
 
@@ -256,16 +317,26 @@ FlameRos::FlameRos(const rclcpp::NodeOptions &options)
 
 void FlameRos::initialize() {
 
-  // std::signal(SIGSEGV, crash_handler);
-  // std::signal(SIGILL, crash_handler);
-  // std::signal(SIGABRT, crash_handler);
-  // std::signal(SIGFPE, crash_handler);
+  node_  = this_node_ptr();
+  clock_ = node_->get_clock();
+
+  /* std::signal(SIGSEGV, crash_handler); */
+  /* std::signal(SIGILL, crash_handler); */
+  /* std::signal(SIGABRT, crash_handler); */
+  /* std::signal(SIGFPE, crash_handler); */
 
   image_transport_ = std::make_unique<image_transport::ImageTransport>(this_node_ptr());
 
   mrs_lib::ParamLoader param_loader(this_node_ptr(), NODE_NAME);
 
   dynparam_mgr_ = std::make_shared<mrs_lib::DynparamMgr>(this_node_ptr(), mutex_drs_params_);
+
+  std::string calibration_file;
+  param_loader.loadParam("calibration_file", calibration_file);
+
+  if (calibration_file != "") {
+    param_loader.addYamlFile(calibration_file);
+  }
 
   std::string custom_config;
   param_loader.loadParam("custom_config", custom_config);
@@ -275,7 +346,7 @@ void FlameRos::initialize() {
   }
 
   if (!param_loader.addYamlFileFromParam("default_config")) {
-    RCLCPP_ERROR(this_node_ptr()->get_logger(), "could not load params from default_config");
+    RCLCPP_ERROR(node_->get_logger(), "could not load params from default_config");
     rclcpp::shutdown();
     exit(1);
   }
@@ -286,13 +357,6 @@ void FlameRos::initialize() {
 
   num_imgs_ = 0;
 
-  // 1. SET YOUR MANUALLY LOADED PARAMETERS
-  // Intrinsic matrix K
-  K = (cv::Mat_<double>(3, 3) << 603.4253785964544, 0.0, 599.3120987871802, 0.0, 604.5122569474232, 371.39448770747913, 0.0, 0.0, 1.0);
-
-  // Distortion coefficients D (k1, k2, k3, k4)
-  D = (cv::Mat_<double>(4, 1) << -0.18034738512074053, 0.007138295377567081, 0.006783095225795607, -0.0020097316748678867);
-
   /*==================== Input Params ====================*/
 
   param_loader.loadParam("uav_name", _uav_name_);
@@ -302,12 +366,89 @@ void FlameRos::initialize() {
   param_loader.loadParam("body_frame", _body_frame_);
   param_loader.loadParam("input/resize_factor", resize_factor_);
 
-  param_loader.loadParam("input/undistort/custom_fisheye_model/balance", _undistort_balance_);
+  param_loader.loadParam("input/undistort/enabled", _undistort_enabled_);
+  param_loader.loadParam("input/undistort/custom_fisheye_model/enabled", _undistort_fisheye_enabled_);
+
+  if (_undistort_enabled_ && _undistort_fisheye_enabled_) {
+
+    std::string         distortion_model;
+    std::vector<double> distortion_coeffs;
+    std::vector<double> intrinsics;
+    std::vector<double> resolution;
+
+    param_loader.loadParam("cam0/distortion_model", distortion_model);
+
+    if (distortion_model != "equidistant") {
+      RCLCPP_ERROR(node_->get_logger(), "the custom camera distortion model needs to be 'equidistant'");
+      rclcpp::shutdown();
+      exit(1);
+    }
+
+    param_loader.loadParam("cam0/distortion_coeffs", distortion_coeffs);
+
+    if (distortion_coeffs.size() != 4) {
+      RCLCPP_ERROR(node_->get_logger(), "the custom camera distortion model needs to have 4 parameters");
+      rclcpp::shutdown();
+      exit(1);
+    }
+
+    param_loader.loadParam("cam0/intrinsics", intrinsics);
+
+    if (intrinsics.size() != 4) {
+      RCLCPP_ERROR(node_->get_logger(), "the custom camera intrinsics needs to have 4 parameters");
+      rclcpp::shutdown();
+      exit(1);
+    }
+
+    param_loader.loadParam("cam0/resolution", resolution);
+
+    if (resolution.size() != 2) {
+      RCLCPP_ERROR(node_->get_logger(), "the custom camera resolution needs to have 2 parameters");
+      rclcpp::shutdown();
+      exit(1);
+    }
+
+    param_loader.loadParam("input/undistort/custom_fisheye_model/balance", _undistort_balance_);
+
+    cv::Mat K;
+
+    K = (cv::Mat_<double>(3, 3) << intrinsics.at(0), 0.0, intrinsics.at(2), 0.0, intrinsics.at(1), intrinsics.at(3), 0.0, 0.0, 1.0);
+
+    RCLCPP_INFO_STREAM(node_->get_logger(), "  original_K = " << K);
+
+    cv::Mat D;
+
+    D = (cv::Mat_<double>(4, 1) << distortion_coeffs.at(0), distortion_coeffs.at(1), distortion_coeffs.at(2), distortion_coeffs.at(3));
+
+    RCLCPP_INFO_STREAM(node_->get_logger(), "  D = " << D);
+
+    _custom_fisheye_expected_width_  = int(resolution.at(0));
+    _custom_fisheye_expected_height_ = int(resolution.at(1));
+
+    // prepare the undistort maps
+
+    cv::Size img_size = {_custom_fisheye_expected_width_, _custom_fisheye_expected_height_};
+
+    RCLCPP_INFO_STREAM(node_->get_logger(), "  img_size = " << img_size);
+
+    // Estimate new camera matrix for the undistorted view
+    cv::fisheye::estimateNewCameraMatrixForUndistortRectify(K, cv::Mat::zeros(4, 1, CV_64F), img_size, cv::Mat::eye(3, 3, CV_64F),
+                                                            _custom_fisheye_undistorted_K_, _undistort_balance_);
+
+    // Create lookup tables for remapping
+    cv::fisheye::initUndistortRectifyMap(K, D, cv::Mat::eye(3, 3, cv::DataType<double>::type), _custom_fisheye_undistorted_K_, img_size, CV_16SC2, map1, map2);
+
+    RCLCPP_INFO(node_->get_logger(), "custom fisheye calibration loaded:");
+    RCLCPP_INFO_STREAM(node_->get_logger(), "  undistorted_K = " << _custom_fisheye_undistorted_K_);
+  }
 
   dynparam_mgr_->register_param("input/max_poseframe_length", &drs_params_.max_pose_frames);
   dynparam_mgr_->register_param("input/poseframe_mod_factor", &drs_params_.poseframe_mod_factor);
 
+  dynparam_mgr_->register_param("output/cloud_decimation", &drs_params_.cloud_decimation);
+
   /*==================== Output Params ====================*/
+
   param_loader.loadParam("output/quiet", params_.debug_quiet);
   param_loader.loadParam("output/mesh", publish_mesh_);
   param_loader.loadParam("output/idepthmap", publish_idepthmap_);
@@ -391,15 +532,10 @@ void FlameRos::initialize() {
   param_loader.loadParam("regularization/nltgv2/check_sticky_obstacles", params_.check_sticky_obstacles);
 
   if (!param_loader.loadedSuccessfully()) {
-    RCLCPP_ERROR(this_node_ptr()->get_logger(), "failed to load params");
+    RCLCPP_ERROR(node_->get_logger(), "failed to load params");
     rclcpp::shutdown();
     exit(1);
   }
-
-  K.at<double>(0, 0) /= resize_factor_;
-  K.at<double>(0, 2) /= resize_factor_;
-  K.at<double>(1, 1) /= resize_factor_;
-  K.at<double>(1, 2) /= resize_factor_;
 
   // Image resizing not supported for non-FLA.
   /* FLAME_ASSERT(resize_factor_ == 1); */
@@ -419,7 +555,7 @@ void FlameRos::initialize() {
 
   // Set up publishers. For some reason this appears to take a while.
   if (!params_.debug_quiet)
-    RCLCPP_INFO(this_node_ptr()->get_logger(), "FlameRos: Setting up publishers...\n");
+    RCLCPP_INFO(node_->get_logger(), "FlameRos: Setting up publishers...\n");
 
   if (publish_idepthmap_) {
     idepth_pub_ = it_->advertiseCamera("~/idepth_registered/image_rect_out", 5);
@@ -463,140 +599,9 @@ void FlameRos::initialize() {
     debug_idepthmap_pub_ = it_->advertise("~/debug/idepthmap", 1);
   }
 
+  RCLCPP_INFO(node_->get_logger(), "initialized");
+
   is_initialized_ = true;
-
-  // Kick off main thread.
-
-  RCLCPP_INFO(this_node_ptr()->get_logger(), "flame_ros constructed");
-}
-
-//}
-
-/* callbackCamera() //{ */
-
-void FlameRos::callbackCamera(const std::shared_ptr<const sensor_msgs::msg::Image> &rgb_msg, const std::shared_ptr<const sensor_msgs::msg::CameraInfo> &info) {
-
-  if (!is_initialized_) {
-    return;
-  }
-
-  RCLCPP_INFO_ONCE(this_node_ptr()->get_logger(), "getting camera data");
-
-  camera_frame_ = rgb_msg->header.frame_id;
-
-  // Grab rgb data.
-  cv::Mat3b rgb = cv_bridge::toCvCopy(rgb_msg, "bgr8")->image;
-
-  assert(rgb.isContinuous());
-
-  if (resize_factor_ != 1) {
-    cv::Mat3b resized_rgb(static_cast<float>(rgb.rows) / resize_factor_, static_cast<float>(rgb.cols) / resize_factor_);
-    cv::resize(rgb, resized_rgb, resized_rgb.size());
-    rgb = resized_rgb;
-  }
-
-  if (!inited_) {
-
-    live_frame_id_ = rgb_msg->header.frame_id;
-
-    if (_camera_frame_ != "") {
-      live_frame_id_ = _camera_frame_;
-    }
-
-    // Set calibration.
-    width_  = rgb.cols;
-    height_ = rgb.rows;
-
-    img_size = {width_, height_};
-
-    cv::Mat D_test = cv::Mat::zeros(4, 1, CV_64F);
-
-    // Estimate new camera matrix for the undistorted view
-    cv::fisheye::estimateNewCameraMatrixForUndistortRectify(K, D_test, img_size, cv::Mat::eye(3, 3, CV_64F), undistort_K, _undistort_balance_);
-
-    // Create lookup tables for remapping
-    cv::fisheye::initUndistortRectifyMap(K, D, cv::Mat::eye(3, 3, cv::DataType<double>::type), undistort_K, img_size, CV_16SC2, map1, map2);
-
-    K = undistort_K;
-
-    for (int ii = 0; ii < 3; ++ii) {
-      for (int jj = 0; jj < 3; ++jj) {
-        K_(ii, jj) = undistort_K.at<double>(ii, jj);
-      }
-    }
-
-    if (K_(0, 0) <= 1.0) {
-      RCLCPP_ERROR(this_node_ptr()->get_logger(), "Camera intrinsics matrix is probably invalid!\n");
-      RCLCPP_ERROR_STREAM(this_node_ptr()->get_logger(), "K = " << std::endl << K_);
-      return;
-    }
-
-    for (int ii = 0; ii < 5; ++ii) {
-      D_(ii) = info->d[ii];
-    }
-
-    inited_ = true;
-
-    RCLCPP_DEBUG(this_node_ptr()->get_logger(), "Set camera calibration!");
-
-    Kinv_ = K_.inverse();
-
-    // Initialize depth sensor.
-    if (!params_.debug_quiet) {
-      RCLCPP_INFO(this_node_ptr()->get_logger(), "FlameRos: Constructing Flame...\n");
-    }
-
-    std::cout << "K_ = " << K_ << std::endl;
-    std::cout << "Kinv_ = " << Kinv_ << std::endl;
-
-    sensor_ = std::make_shared<flame::Flame>(width_, height_, K_, Kinv_, params_);
-
-    /*==================== Enter main loop ====================*/
-    if (!params_.debug_quiet) {
-      RCLCPP_INFO(this_node_ptr()->get_logger(), "FlameRos: Done. We are GO for launch!\n");
-    }
-  }
-
-  if (undistort_) {
-
-    if (!rgb.empty()) {
-
-      // High-speed remapping
-      cv::remap(rgb, rgb, map1, map2, cv::INTER_LINEAR, cv::BORDER_CONSTANT);
-
-      publishUndistortedImage(rgb, rgb_msg->header);
-    }
-
-    /* cv::Mat1f Kcv, Dcv; */
-    /* cv::eigen2cv(K_, Kcv); */
-    /* cv::eigen2cv(D_, Dcv); */
-    /* cv::Mat3b rgb_undistorted; */
-    /* cv::undistort(rgb, rgb_undistorted, Kcv, Dcv); */
-    /* rgb = rgb_undistorted; */
-  }
-
-  // Get pose of camera.
-  geometry_msgs::msg::TransformStamped tf;
-
-  std::string cam_frame = rgb_msg->header.frame_id;
-
-  if (_camera_frame_ != "") {
-    cam_frame = _camera_frame_;
-  }
-
-  auto tf_opt = transformer_->getTransform(cam_frame, _world_frame_, rclcpp::Time(rgb_msg->header.stamp));
-
-  if (!tf_opt) {
-    RCLCPP_WARN_THROTTLE(this_node_ptr()->get_logger(), *this_node_ptr()->get_clock(), 1000, "failed to get tf from %s to %s", cam_frame.c_str(),
-                         _world_frame_.c_str());
-    return;
-  }
-
-  Sophus::SE3f pose;
-
-  ros_sensor_streams::tfToSophusSE3<float>(tf_opt.value().transform, &pose);
-
-  processFrame(frame_counter++, live_frame_id_, rclcpp::Time(rgb_msg->header.stamp).seconds(), pose, rgb);
 }
 
 //}
@@ -624,7 +629,7 @@ void FlameRos::processFrame(const uint32_t img_id, const std::string &cam_frame_
   sensor_->updatePoseFramePoses(ids, poses);
 
   if (img_id < 5) {
-    RCLCPP_INFO(this_node_ptr()->get_logger(), "waiting for >= 5 images");
+    RCLCPP_INFO(node_->get_logger(), "waiting for >= 5 images");
     return;
   }
 
@@ -635,7 +640,7 @@ void FlameRos::processFrame(const uint32_t img_id, const std::string &cam_frame_
     stats_.tock("process_frame");
 
     if (!params_.debug_quiet) {
-      RCLCPP_WARN(this_node_ptr()->get_logger(), "Unsuccessful update. Reason: %s\n", msg.c_str());
+      RCLCPP_WARN(node_->get_logger(), "Unsuccessful update. Reason: %s\n", msg.c_str());
     }
 
     return;
@@ -655,6 +660,7 @@ void FlameRos::processFrame(const uint32_t img_id, const std::string &cam_frame_
   // | ------------------- custom pruning ends ------------------ |
 
   if (max_angular_rate_ > 0.0f) {
+
     // Check angle difference between last and current pose. If we're rotating,
     // we shouldn't publish output since it's probably too noisy.
     Eigen::Quaternionf q_delta     = pose.unit_quaternion() * prev_pose_.unit_quaternion().inverse();
@@ -667,7 +673,7 @@ void FlameRos::processFrame(const uint32_t img_id, const std::string &cam_frame_
     if (angle_rate * 180.0f / M_PI > max_angular_rate_) {
       // Angular rate is too high.
       if (!params_.debug_quiet)
-        RCLCPP_ERROR(this_node_ptr()->get_logger(), "Angle Delta = %.3f, rate = %f.3\n", angle_delta * 180.0f / M_PI, angle_rate * 180.0f / M_PI);
+        RCLCPP_ERROR(node_->get_logger(), "Angle Delta = %.3f, rate = %f.3\n", angle_delta * 180.0f / M_PI, angle_rate * 180.0f / M_PI);
       return;
     }
   }
@@ -697,7 +703,7 @@ void FlameRos::processFrame(const uint32_t img_id, const std::string &cam_frame_
 
     if (publish_idepthmap_) {
       // Publish full idepthmap.
-      publishDepthMap(idepth_pub_, cam_frame_id, time, K_, sensor_->getInverseDepthMap());
+      publishDepthMap(idepth_pub_, cam_frame_id, time, K_resized_, sensor_->getInverseDepthMap());
     }
 
     // Convert to depths.
@@ -713,12 +719,12 @@ void FlameRos::processFrame(const uint32_t img_id, const std::string &cam_frame_
     }
 
     if (publish_depthmap_) {
-      publishDepthMap(depth_pub_, live_frame_id_, time, K_, depth_est);
+      publishDepthMap(depth_pub_, live_frame_id_, time, K_resized_, depth_est);
     }
 
     if (publish_cloud_) {
       float max_depth = (params_.do_idepth_triangle_filter) ? 1.0f / params_.min_triangle_idepth : std::numeric_limits<float>::max();
-      publishPointCloud(cloud_pub_, live_frame_id_, time, K_, depth_est, 0.1f, max_depth);
+      publishPointCloud(cloud_pub_, live_frame_id_, time, K_resized_, depth_est, 0.1f, max_depth);
     }
   }
 
@@ -748,7 +754,7 @@ void FlameRos::processFrame(const uint32_t img_id, const std::string &cam_frame_
       }
     }
 
-    publishDepthMap(features_pub_, live_frame_id_, time, K_, depth_raw);
+    publishDepthMap(features_pub_, live_frame_id_, time, K_resized_, depth_raw);
   }
 
   if (publish_stats_) {
@@ -757,16 +763,16 @@ void FlameRos::processFrame(const uint32_t img_id, const std::string &cam_frame_
     publishFlameStats(stats_pub_, img_id, time, stats, timings);
   }
 
-  stats_.set("latency", (this_node_ptr()->get_clock()->now().seconds() - time) * 1000);
+  stats_.set("latency", (clock_->now().seconds() - time) * 1000);
 
   if (!params_.debug_quiet) {
-    RCLCPP_INFO(this_node_ptr()->get_logger(), "FlameRos/latency = %4.1fms\n", stats_.stats("latency"));
+    RCLCPP_INFO(node_->get_logger(), "FlameRos/latency = %4.1fms\n", stats_.stats("latency"));
   }
 
   stats_.tock("publishing");
 
   if (!params_.debug_quiet) {
-    RCLCPP_INFO(this_node_ptr()->get_logger(), "FlameRos/publishing = %4.1fms\n", stats_.timings("publishing"));
+    RCLCPP_INFO(node_->get_logger(), "FlameRos/publishing = %4.1fms\n", stats_.timings("publishing"));
   }
 
   /*==================== Publish debug stuff ====================*/
@@ -808,18 +814,181 @@ void FlameRos::processFrame(const uint32_t img_id, const std::string &cam_frame_
   }
 
   stats_.tock("debug_publishing");
-  if (!params_.debug_quiet)
-    RCLCPP_INFO(this_node_ptr()->get_logger(), "FlameRos/debug_publishing = %4.1fms\n", stats_.timings("debug_publishing"));
+
+  if (!params_.debug_quiet) {
+    RCLCPP_INFO(node_->get_logger(), "FlameRos/debug_publishing = %4.1fms\n", stats_.timings("debug_publishing"));
+  }
 
   stats_.tock("process_frame");
 
-  if (!params_.debug_quiet)
-    RCLCPP_INFO(this_node_ptr()->get_logger(), "FlameRos/process_frame = %4.1fms\n", stats_.timings("process_frame"));
+  if (!params_.debug_quiet) {
+    RCLCPP_INFO(node_->get_logger(), "FlameRos/process_frame = %4.1fms\n", stats_.timings("process_frame"));
+  }
 
   return;
 }
 
 //}
+
+// | ------------------------ callbacks ----------------------- |
+
+/* callbackCamera() //{ */
+
+void FlameRos::callbackCamera(const std::shared_ptr<const sensor_msgs::msg::Image> &rgb_msg, const std::shared_ptr<const sensor_msgs::msg::CameraInfo> &info) {
+
+  if (!is_initialized_) {
+    return;
+  }
+
+  RCLCPP_INFO_ONCE(node_->get_logger(), "getting camera data");
+
+  camera_frame_ = rgb_msg->header.frame_id;
+
+  // Grab rgb data.
+  cv::Mat3b rgb = cv_bridge::toCvCopy(rgb_msg, "bgr8")->image;
+
+  if (_undistort_fisheye_enabled_) {
+    if (rgb.cols != _custom_fisheye_expected_width_ || rgb.rows != _custom_fisheye_expected_height_) {
+      RCLCPP_ERROR_THROTTLE(node_->get_logger(), *clock_, 1000, "the received image resolution does not match the custom calibration file");
+      return;
+    }
+  }
+
+  assert(rgb.isContinuous());
+
+  if (!inited_) {
+
+    RCLCPP_INFO(node_->get_logger(), "initiating flame sensor object");
+
+    live_frame_id_ = rgb_msg->header.frame_id;
+
+    if (_camera_frame_ != "") {
+      live_frame_id_ = _camera_frame_;
+    }
+
+    width_  = rgb.cols;
+    height_ = rgb.rows;
+
+    if (_undistort_fisheye_enabled_) {
+
+      RCLCPP_INFO(node_->get_logger(), " ... using custom fisheye");
+
+      for (int ii = 0; ii < 3; ++ii) {
+        for (int jj = 0; jj < 3; ++jj) {
+          K_(ii, jj) = _custom_fisheye_undistorted_K_.at<double>(ii, jj);
+        }
+      }
+
+    } else {
+
+      RCLCPP_INFO(node_->get_logger(), " ... using standard camera model");
+
+      for (int ii = 0; ii < 3; ++ii) {
+        for (int jj = 0; jj < 3; ++jj) {
+          K_(ii, jj) = info->p[ii * 4 + jj];
+        }
+      }
+
+      for (int ii = 0; ii < 5; ++ii) {
+        D_(ii) = info->d[ii];
+      }
+    }
+
+    K_resized_ = K_;
+
+    RCLCPP_INFO_STREAM(node_->get_logger(), "K_resiszed = " << K_resized_ << std::endl);
+
+    RCLCPP_INFO_STREAM(node_->get_logger(), "resize_factor_ = " << resize_factor_);
+
+    K_resized_(0, 0) /= resize_factor_;
+    K_resized_(0, 2) /= resize_factor_;
+    K_resized_(1, 1) /= resize_factor_;
+    K_resized_(1, 2) /= resize_factor_;
+
+    RCLCPP_INFO_STREAM(node_->get_logger(), "K_resiszed = " << K_resized_ << std::endl);
+
+    if (K_(0, 0) <= 1.0) {
+      RCLCPP_ERROR_STREAM_THROTTLE(node_->get_logger(), *clock_, 1000, "Camera intrinsics matrix is probably invalid!");
+      return;
+    }
+
+    Kinv_ = K_resized_.inverse();
+
+    // Initialize depth sensor.
+    if (!params_.debug_quiet) {
+      RCLCPP_INFO(node_->get_logger(), "FlameRos: Constructing Flame...");
+    }
+
+    sensor_ = std::make_shared<flame::Flame>(width_ / resize_factor_, height_ / resize_factor_, K_resized_, Kinv_, params_);
+
+    /*==================== Enter main loop ====================*/
+    if (!params_.debug_quiet) {
+      RCLCPP_INFO(node_->get_logger(), "FlameRos: Done. We are GO for launch!\n");
+    }
+
+    inited_ = true;
+  }
+
+  if (_undistort_enabled_) {
+
+    if (!rgb.empty()) {
+
+      if (_undistort_fisheye_enabled_) {
+
+        // High-speed remapping
+        cv::remap(rgb, rgb, map1, map2, cv::INTER_LINEAR, cv::BORDER_CONSTANT);
+
+        RCLCPP_INFO_ONCE(node_->get_logger(), "rectifying using custom fisheye model");
+
+      } else {
+
+        cv::Mat1f Kcv, Dcv;
+        cv::eigen2cv(K_, Kcv);
+        cv::eigen2cv(D_, Dcv);
+        cv::Mat3b rgb_undistorted;
+        cv::undistort(rgb, rgb_undistorted, Kcv, Dcv);
+
+        rgb = rgb_undistorted;
+
+        RCLCPP_INFO_ONCE(node_->get_logger(), "rectifying using standard polynomial model");
+      }
+
+      publishUndistortedImage(rgb, rgb_msg->header);
+    }
+  }
+
+  if (resize_factor_ != 1) {
+    cv::Mat3b resized_rgb(static_cast<float>(rgb.rows) / resize_factor_, static_cast<float>(rgb.cols) / resize_factor_);
+    cv::resize(rgb, resized_rgb, resized_rgb.size());
+    rgb = resized_rgb;
+  }
+
+  // Get pose of camera.
+  geometry_msgs::msg::TransformStamped tf;
+
+  std::string cam_frame = rgb_msg->header.frame_id;
+
+  if (_camera_frame_ != "") {
+    cam_frame = _camera_frame_;
+  }
+
+  auto tf_opt = transformer_->getTransform(cam_frame, _world_frame_, rclcpp::Time(rgb_msg->header.stamp));
+
+  if (!tf_opt) {
+    RCLCPP_WARN_THROTTLE(node_->get_logger(), *clock_, 1000, "failed to get tf from %s to %s", cam_frame.c_str(), _world_frame_.c_str());
+    return;
+  }
+
+  Sophus::SE3f pose;
+
+  ros_sensor_streams::tfToSophusSE3<float>(tf_opt.value().transform, &pose);
+
+  processFrame(frame_counter++, live_frame_id_, rclcpp::Time(rgb_msg->header.stamp).seconds(), pose, rgb);
+}
+
+//}
+
+// | ----------------------- publishers ----------------------- |
 
 /* publishUndistortedImage() //{ */
 
@@ -835,7 +1004,7 @@ void FlameRos::publishUndistortedImage(const cv::Mat3b &rgb, const std_msgs::msg
 
   for (int i = 0; i < 3; i++) {
     for (int j = 0; j < 3; j++) {
-      cam_info.k[i + j * 3] = K.at<double>(i, j);
+      cam_info.k[i + j * 3] = K_resized_(i, j);
     }
   }
 
@@ -878,6 +1047,381 @@ void FlameRos::publishUndistortedImage(const cv::Mat3b &rgb, const std_msgs::msg
   cam_info.p[11] = 0.0;
 
   debug_undistort_.publish(*debug_img_msg, cam_info);
+}
+
+//}
+
+/* publishFlameNodeletStats() //{ */
+
+void FlameRos::publishFlameNodeletStats(mrs_lib::PublisherHandler<flame_ros_msgs::msg::FlameNodeletStats> &pub, int img_id, double time,
+                                        const std::unordered_map<std::string, double> &stats, const std::unordered_map<std::string, double> &timings) {
+
+  flame_ros_msgs::msg::FlameNodeletStats::SharedPtr msg(new flame_ros_msgs::msg::FlameNodeletStats());
+
+  msg->header.stamp = rclcpp::Time(static_cast<int64_t>(time * 1e9), RCL_ROS_TIME);
+
+  msg->img_id    = img_id;
+  msg->timestamp = time;
+
+  // Fill stat if it exists in the map.
+  auto fillStati = [](const std::unordered_map<std::string, double> &stats, const std::string &name, int *out) {
+    if (stats.count(name) > 0) {
+      *out = stats.at(name);
+    }
+    return;
+  };
+  auto fillStatf = [](const std::unordered_map<std::string, double> &stats, const std::string &name, float *out) {
+    if (stats.count(name) > 0) {
+      *out = stats.at(name);
+    }
+    return;
+  };
+
+  fillStati(stats, "queue_size", &msg->queue_size);
+  fillStatf(stats, "fps", &msg->fps);
+  fillStatf(stats, "fps_max", &msg->fps_max);
+  fillStatf(timings, "main", &msg->main_ms);
+  fillStatf(timings, "waiting", &msg->waiting_ms);
+  fillStatf(timings, "process_frame", &msg->process_frame_ms);
+  fillStatf(timings, "publishing", &msg->publishing_ms);
+  fillStatf(timings, "debug_publishing", &msg->debug_publishing_ms);
+  fillStatf(stats, "latency", &msg->latency_ms);
+
+  fillStatf(stats, "max_load_cpu", &msg->max_load_cpu);
+  fillStatf(stats, "max_load_mem", &msg->max_load_mem);
+  fillStatf(stats, "max_load_swap", &msg->max_load_swap);
+  fillStatf(stats, "sys_load_cpu", &msg->sys_load_cpu);
+  fillStatf(stats, "sys_load_mem", &msg->sys_load_mem);
+  fillStatf(stats, "sys_load_swap", &msg->sys_load_swap);
+  fillStatf(stats, "pid_load_cpu", &msg->pid_load_cpu);
+  fillStatf(stats, "pid_load_mem", &msg->pid_load_mem);
+  fillStatf(stats, "pid_load_swap ", &msg->pid_load_swap);
+  fillStati(stats, "pid", &msg->pid);
+
+  pub.publish(*msg);
+
+  return;
+}
+
+//}
+
+/* publishFlameStats() //{ */
+
+void FlameRos::publishFlameStats(mrs_lib::PublisherHandler<flame_ros_msgs::msg::FlameStats> &pub, int img_id, double time,
+                                 const std::unordered_map<std::string, double> &stats, const std::unordered_map<std::string, double> &timings) {
+
+  flame_ros_msgs::msg::FlameStats::SharedPtr msg(new flame_ros_msgs::msg::FlameStats());
+
+  msg->header.stamp = rclcpp::Time(static_cast<int64_t>(time * 1e9), RCL_ROS_TIME);
+
+  msg->img_id    = img_id;
+  msg->timestamp = time;
+
+  // Fill stat if it exists in the map.
+  auto fillStati = [](const std::unordered_map<std::string, double> &stats, const std::string &name, int *out) {
+    if (stats.count(name) > 0) {
+      *out = stats.at(name);
+    }
+    return;
+  };
+
+  auto fillStatf = [](const std::unordered_map<std::string, double> &stats, const std::string &name, float *out) {
+    if (stats.count(name) > 0) {
+      *out = stats.at(name);
+    }
+    return;
+  };
+
+  fillStati(stats, "num_feats", &msg->num_feats);
+  fillStati(stats, "num_vtx", &msg->num_vtx);
+  fillStati(stats, "num_tris", &msg->num_tris);
+  fillStati(stats, "num_edges", &msg->num_edges);
+
+  fillStatf(stats, "coverage", &msg->coverage);
+
+  fillStati(stats, "num_idepth_updates", &msg->num_idepth_updates);
+  fillStati(stats, "num_fail_max_var", &msg->num_fail_max_var);
+  fillStati(stats, "num_fail_max_dropouts", &msg->num_fail_max_dropouts);
+  fillStati(stats, "num_fail_ref_patch_grad", &msg->num_fail_ref_patch_grad);
+  fillStati(stats, "num_fail_ambiguous_match", &msg->num_fail_ambiguous_match);
+  fillStati(stats, "num_fail_max_cost", &msg->num_fail_max_cost);
+
+  fillStatf(stats, "nltgv2_total_smoothness_cost", &msg->nltgv2_total_smoothness_cost);
+  fillStatf(stats, "nltgv2_avg_smoothness_cost", &msg->nltgv2_avg_smoothness_cost);
+  fillStatf(stats, "nltgv2_total_data_cost", &msg->nltgv2_total_data_cost);
+  fillStatf(stats, "nltgv2_avg_data_cost", &msg->nltgv2_avg_data_cost);
+
+  fillStatf(stats, "total_photo_error", &msg->total_photo_error);
+  fillStatf(stats, "avg_photo_error", &msg->avg_photo_error);
+
+  fillStatf(stats, "fps", &msg->fps);
+  fillStatf(stats, "fps_max", &msg->fps_max);
+  fillStatf(timings, "update", &msg->update_ms);
+  fillStatf(timings, "update_locking", &msg->update_locking_ms);
+  fillStatf(timings, "frame_creation", &msg->frame_creation_ms);
+  fillStatf(timings, "interpolate", &msg->interpolate_ms);
+  fillStatf(timings, "keyframe", &msg->keyframe_ms);
+  fillStatf(timings, "detection", &msg->detection_ms);
+  fillStatf(timings, "detection_loop", &msg->detection_loop_ms);
+  fillStatf(timings, "update_idepths", &msg->update_idepths_ms);
+  fillStatf(timings, "project_features", &msg->project_features_ms);
+  fillStatf(timings, "project_graph", &msg->project_graph_ms);
+  fillStatf(timings, "sync_graph", &msg->sync_graph_ms);
+  fillStatf(timings, "triangulate", &msg->triangulate_ms);
+  fillStatf(timings, "median_filter", &msg->median_filter_ms);
+  fillStatf(timings, "lowpass_filter", &msg->lowpass_filter_ms);
+
+  pub.publish(*msg);
+
+  return;
+}
+
+//}
+
+/* publishDepthMesh() //{ */
+
+void FlameRos::publishDepthMesh(mrs_lib::PublisherHandler<pcl_msgs::msg::PolygonMesh> &mesh_pub, const std::string &frame_id, double time,
+                                const Eigen::Matrix3f &Kinv, const std::vector<cv::Point2f> &vertices, const std::vector<float> &idepths,
+                                const std::vector<Eigen::Vector3f> &normals, const std::vector<flame::Triangle> &triangles,
+                                const std::vector<bool> &tri_validity, const cv::Mat3b &rgb) {
+
+  pcl_msgs::msg::PolygonMesh::SharedPtr msg(new pcl_msgs::msg::PolygonMesh());
+
+  msg->header.stamp = rclcpp::Time(static_cast<int64_t>(time * 1e9), RCL_ROS_TIME);
+
+  msg->header.frame_id = frame_id;
+
+  // Create point cloud to hold vertices.
+  pcl::PointCloud<flame_ros::PointNormalUV> cloud;
+
+  cloud.width  = vertices.size();
+  cloud.height = 1;
+  cloud.points.resize(vertices.size());
+  cloud.is_dense = false;
+
+  for (long unsigned int ii = 0; ii < vertices.size(); ++ii) {
+
+    float id = idepths[ii];
+
+    if (!std::isnan(id) && (id > 0.0f)) {
+
+      Eigen::Vector3f uhom(vertices[ii].x, vertices[ii].y, 1.0f);
+      uhom /= id;
+      Eigen::Vector3f p(Kinv * uhom);
+      cloud.points[ii].x = p(0);
+      cloud.points[ii].y = p(1);
+      cloud.points[ii].z = p(2);
+
+      cloud.points[ii].normal_x = normals[ii](0);
+      cloud.points[ii].normal_y = normals[ii](1);
+      cloud.points[ii].normal_z = normals[ii](2);
+
+      // OpenGL textures range from 0 to 1.
+      cloud.points[ii].u = vertices[ii].x / (rgb.cols - 1);
+      cloud.points[ii].v = vertices[ii].y / (rgb.rows - 1);
+
+    } else {
+
+      // Add invalid value to skip this point. Note that the initial value
+      // is (0, 0, 0), so you must manually invalidate the point.
+      cloud.points[ii].x = std::numeric_limits<float>::quiet_NaN();
+      cloud.points[ii].y = std::numeric_limits<float>::quiet_NaN();
+      cloud.points[ii].z = std::numeric_limits<float>::quiet_NaN();
+      continue;
+    }
+  }
+
+  pcl::toROSMsg(cloud, msg->cloud);
+
+  // NOTE: Header fields need to be filled in after pcl::toROSMsg() call.
+  msg->cloud.header = std_msgs::msg::Header();
+
+  msg->header.stamp = rclcpp::Time(static_cast<int64_t>(time * 1e9), RCL_ROS_TIME);
+
+  msg->cloud.header.frame_id = frame_id;
+
+  // Fill in faces.
+  msg->polygons.reserve(triangles.size());
+
+  for (long unsigned int ii = 0; ii < triangles.size(); ++ii) {
+
+    if (tri_validity[ii]) {
+
+      pcl_msgs::msg::Vertices vtx_ii;
+      vtx_ii.vertices.resize(3);
+      vtx_ii.vertices[0] = triangles[ii][2];
+      vtx_ii.vertices[1] = triangles[ii][1];
+      vtx_ii.vertices[2] = triangles[ii][0];
+
+      msg->polygons.push_back(vtx_ii);
+    }
+  }
+
+  if (msg->polygons.size() > 0) {
+    mesh_pub.publish(*msg);
+  }
+}
+
+//}
+
+/* publishDepthMap() //{ */
+
+void FlameRos::publishDepthMap(const image_transport::CameraPublisher &pub, const std::string &frame_id, double time, const Eigen::Matrix3f &K,
+                               const cv::Mat1f &depth_est) {
+
+  // Publish depthmap.
+  std_msgs::msg::Header header;
+
+  header.stamp = rclcpp::Time(static_cast<int64_t>(time * 1e9), RCL_ROS_TIME);
+
+  header.frame_id = frame_id;
+
+  sensor_msgs::msg::CameraInfo::SharedPtr cinfo(new sensor_msgs::msg::CameraInfo);
+  cinfo->header           = header;
+  cinfo->height           = depth_est.rows;
+  cinfo->width            = depth_est.cols;
+  cinfo->distortion_model = "plumb_bob";
+  cinfo->d                = {0.0, 0.0, 0.0, 0.0, 0.0};
+
+  for (int ii = 0; ii < 3; ++ii) {
+    for (int jj = 0; jj < 3; ++jj) {
+      cinfo->k[ii * 3 + jj] = K(ii, jj);
+      cinfo->p[ii * 4 + jj] = K(ii, jj);
+      cinfo->r[ii * 3 + jj] = 0.0;
+    }
+  }
+
+  cinfo->p[3]  = 0.0;
+  cinfo->p[7]  = 0.0;
+  cinfo->p[11] = 0.0;
+  cinfo->r[0]  = 1.0;
+  cinfo->r[4]  = 1.0;
+  cinfo->r[8]  = 1.0;
+
+  cv_bridge::CvImage depth_cvi(header, "32FC1", depth_est);
+
+  pub.publish(depth_cvi.toImageMsg(), cinfo);
+}
+
+//}
+
+/* publishPointCloud() //{ */
+
+void FlameRos::publishPointCloud(mrs_lib::PublisherHandler<sensor_msgs::msg::PointCloud2> &pub, const std::string &frame_id, double time,
+                                 const Eigen::Matrix3f &K, const cv::Mat1f &depth_est, float min_depth, float max_depth) {
+
+  auto drs_params = mrs_lib::get_mutexed(mutex_drs_params_, drs_params_);
+
+  int height = depth_est.rows;
+  int width  = depth_est.cols;
+
+  pcl::PointCloud<pcl::PointXYZ>::Ptr cloud = pcl::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
+
+  cloud->width    = width;
+  cloud->height   = height;
+  cloud->is_dense = false;
+  cloud->points.resize(width * height);
+
+  Eigen::Matrix3f Kinv(K.inverse());
+
+  for (int ii = 0; ii < height; ++ii) {
+    for (int jj = 0; jj < width; ++jj) {
+
+      int idx = ii * width + jj;
+
+      float depth = depth_est(ii, jj);
+
+      if (std::isnan(depth) || (depth < min_depth) || (depth > max_depth)) {
+        // Add invalid value to skip this point. Note that the initial value
+        // is (0, 0, 0), so you must manually invalidate the point.
+        cloud->points[idx].x = std::numeric_limits<float>::quiet_NaN();
+        cloud->points[idx].y = std::numeric_limits<float>::quiet_NaN();
+        cloud->points[idx].z = std::numeric_limits<float>::quiet_NaN();
+        continue;
+      }
+
+      Eigen::Vector3f xyz(jj * depth, ii * depth, depth);
+      xyz = Kinv * xyz;
+
+      cloud->points[idx].x = xyz(0);
+      cloud->points[idx].y = xyz(1);
+      cloud->points[idx].z = xyz(2);
+    }
+  }
+
+  pcl::VoxelGrid<pcl::PointXYZ> voxel_filter;
+
+  voxel_filter.setInputCloud(cloud);
+
+  voxel_filter.setLeafSize(drs_params.cloud_decimation, drs_params.cloud_decimation, drs_params.cloud_decimation);
+
+  voxel_filter.filter(*cloud);
+
+  sensor_msgs::msg::PointCloud2::SharedPtr msg(new sensor_msgs::msg::PointCloud2());
+  pcl::toROSMsg(*cloud, *msg);
+
+  msg->header = std_msgs::msg::Header();
+
+  msg->header.stamp = rclcpp::Time(static_cast<int64_t>(time * 1e9), RCL_ROS_TIME);
+
+  msg->header.frame_id = frame_id;
+
+  pub.publish(*msg);
+
+  return;
+}
+
+//}
+
+// | --------------------- other routines --------------------- |
+
+/* getDepthConfusionMatrix() //{ */
+
+void getDepthConfusionMatrix(const cv::Mat1f &idepths, const cv::Mat1f &depth, cv::Mat1f *idepth_error, float *total_error, int *true_pos, int *true_neg,
+                             int *false_pos, int *false_neg) {
+
+  // Compute confusion matrix with detection being strictly positive idepth.
+  *true_pos  = 0;
+  *true_neg  = 0;
+  *false_pos = 0;
+  *false_neg = 0;
+
+  *total_error  = 0.0f;
+  *idepth_error = cv::Mat1f(depth.rows, depth.cols, std::numeric_limits<float>::quiet_NaN());
+
+  for (int ii = 0; ii < depth.rows; ++ii) {
+    for (int jj = 0; jj < depth.cols; ++jj) {
+
+      if (depth(ii, jj) > 0) {
+
+        if (!std::isnan(idepths(ii, jj))) {
+
+          float idepth_est  = idepths(ii, jj);
+          float idepth_true = 1.0f / depth(ii, jj);
+
+          float error             = fu::fast_abs(idepth_est - idepth_true);
+          (*idepth_error)(ii, jj) = error;
+          *total_error += error;
+
+          (*true_pos)++;
+        } else {
+          (*false_neg)++;
+        }
+
+      } else if (!std::isnan(idepths(ii, jj))) {
+
+        float idepth_est        = idepths(ii, jj);
+        float error             = fu::fast_abs(idepth_est);
+        (*idepth_error)(ii, jj) = error;
+        *total_error += error;
+
+        (*false_pos)++;
+
+      } else {
+        (*true_neg)++;
+      }
+    }
+  }
 }
 
 //}
