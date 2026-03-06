@@ -6,6 +6,8 @@
 #include <mrs_lib/node.h>
 #include <mrs_lib/subscriber_handler.h>
 #include <mrs_lib/transformer.h>
+#include <mrs_lib/dynparam_mgr.h>
+#include <mrs_lib/mutex.h>
 
 #include <ros_sensor_streams/conversions.h>
 
@@ -115,7 +117,7 @@ private:
   std::string _camera_frame_;
   std::string _path_frame_;
 
-  double _max_path_length_;
+  double _max_poseframe_length_;
 
   int poseframe_subsample_factor_ = 1; // Create a poseframe every this number of images.
   int resize_factor_;                  // Factor to resize image. resize_factor_ = 2 will downsample by 2 in each dimension.
@@ -132,8 +134,6 @@ private:
 
   // PoseFrame stuff.
   std::atomic<bool> pfs_inited_ = false; // False until first poseframe message received with > 2 pfs.
-  uint32_t          first_pf_id_;        // ID of first poseframe.
-  bool              use_poseframe_updates_;
 
   ////ros::Subscriber poseframe_sub_;
   // mrs_lib::SubscriberHandler<nav_msgs::msg::Path> poseframe_sub_;
@@ -223,6 +223,19 @@ private:
   // ThreadSafeQueue<Frame> queue_;j
 
   long unsigned int frame_counter = 0;
+
+  // | --------------- dynamic reconfigure server --------------- |
+
+  std::shared_ptr<mrs_lib::DynparamMgr> dynparam_mgr_;
+
+  struct Params_t
+  {
+    int max_pose_frames;
+    int poseframe_mod_factor;
+  };
+
+  Params_t   drs_params_;
+  std::mutex mutex_drs_params_;
 };
 
 //}
@@ -250,6 +263,8 @@ void FlameRos::initialize() {
 
   mrs_lib::ParamLoader param_loader(this_node_ptr(), NODE_NAME);
 
+  dynparam_mgr_ = std::make_shared<mrs_lib::DynparamMgr>(this_node_ptr(), mutex_drs_params_);
+
   std::string custom_config;
   param_loader.loadParam("custom_config", custom_config);
 
@@ -262,6 +277,8 @@ void FlameRos::initialize() {
     rclcpp::shutdown();
     exit(1);
   }
+
+  dynparam_mgr_->get_param_provider().copyYamls(param_loader.getParamProvider());
 
   load_ = std::move(fu::LoadTracker(getpid()));
 
@@ -281,9 +298,10 @@ void FlameRos::initialize() {
   param_loader.loadParam("camera_frame", _camera_frame_);
   param_loader.loadParam("world_frame", _world_frame_);
   param_loader.loadParam("body_frame", _body_frame_);
-  param_loader.loadParam("input/use_poseframe_updates", use_poseframe_updates_);
   param_loader.loadParam("input/resize_factor", resize_factor_);
-  param_loader.loadParam("input/max_path_length", _max_path_length_);
+
+  dynparam_mgr_->register_param("input/max_poseframe_length", &drs_params_.max_pose_frames);
+  dynparam_mgr_->register_param("input/poseframe_mod_factor", &drs_params_.poseframe_mod_factor);
 
   /*==================== Output Params ====================*/
   param_loader.loadParam("output/quiet", params_.debug_quiet);
@@ -374,6 +392,11 @@ void FlameRos::initialize() {
     exit(1);
   }
 
+  K.at<double>(0, 0) /= resize_factor_;
+  K.at<double>(0, 2) /= resize_factor_;
+  K.at<double>(1, 1) /= resize_factor_;
+  K.at<double>(1, 2) /= resize_factor_;
+
   // Image resizing not supported for non-FLA.
   /* FLAME_ASSERT(resize_factor_ == 1); */
 
@@ -389,9 +412,6 @@ void FlameRos::initialize() {
 
   transformer_ = std::make_shared<mrs_lib::Transformer>(this_node_ptr());
   transformer_->retryLookupNewest(true);
-
-  first_pf_id_ = 0;
-  RCLCPP_INFO(this_node_ptr()->get_logger(), "poseframe updated enabled: %s", use_poseframe_updates_ ? "true" : "false");
 
   // Set up publishers. For some reason this appears to take a while.
   if (!params_.debug_quiet)
@@ -592,6 +612,8 @@ void FlameRos::callbackCamera(const std::shared_ptr<const sensor_msgs::msg::Imag
 
 void FlameRos::processFrame(const uint32_t img_id, const std::string &cam_frame_id, const double time, const Sophus::SE3f &pose, const cv::Mat3b &rgb) {
 
+  auto drs_params = mrs_lib::get_mutexed(mutex_drs_params_, drs_params_);
+
   stats_.tick("process_frame");
 
   /*==================== Process image ====================*/
@@ -599,10 +621,7 @@ void FlameRos::processFrame(const uint32_t img_id, const std::string &cam_frame_
   cv::Mat1b img_gray;
   cv::cvtColor(rgb, img_gray, cv::COLOR_RGB2GRAY);
 
-  /* bool is_poseframe = ((static_cast<int>(img_id) - first_pf_id_) % poseframe_subsample_factor_) == 0; */
-  /* bool is_poseframe = ((static_cast<int>(img_id) - first_pf_id_) % 10) == 0; */
-  /* bool is_poseframe = ; // TODO ? */
-  bool is_poseframe = true;
+  bool is_poseframe = (img_id % drs_params.poseframe_mod_factor) == 0;
 
   std::string msg;
 
@@ -633,7 +652,7 @@ void FlameRos::processFrame(const uint32_t img_id, const std::string &cam_frame_
 
   poses_ids_.insert(poses_ids_.begin(), img_id);
 
-  if (poses_ids_.size() > 5) {
+  if (poses_ids_.size() > drs_params.max_pose_frames) {
 
     poses_ids_.pop_back();
 

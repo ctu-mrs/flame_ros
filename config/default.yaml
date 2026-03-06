@@ -1,11 +1,9 @@
 input:
-  use_poseframe_updates: false
-
   # Downsample image width/height by this factor.
-  resize_factor: 1
+  resize_factor: 2
 
-  # when subscribing to odometry, limit how long the path constructed out of the odometry is
-  max_path_length: 1.0 # [s]
+  max_poseframe_length: 10 # [-]
+  poseframe_mod_factor: 3 # [-] use 1 in N images for poseframe {reconfigurable}
 
 output:
   quiet: true # Turn off terminal output.
@@ -56,19 +54,19 @@ debug:
   normals: false # Image colored by interpolated normal vectors.
   idepthmap: false # Colored idepthmap.
   text_overlay: false # Draw text overlays on images.
-  flip_images: false # Rotated debug images by 180 degrees for display.
+  flip_images: true # Rotated debug images by 180 degrees for display.
 
 threading:
   openmp:
-    num_threads: 1 # Number of threads used in parallel sections.
+    num_threads: 4 # Number of threads used in parallel sections.
     chunk_size: 1024 # Number of items given to each thread.
 
 features:
   do_letterbox: false # Process only middle third of image.
   detection:
-    min_grad_mag: 5.0 # Minimum gradient magntiude.
+    min_grad_mag: 3.0 # Minimum gradient magntiude.
     min_error: 100.0 # Minimum photo error.
-    win_size: 16 # Detection grid resolution (win_size x win_size).
+    win_size: 12 # Detection grid resolution (win_size x win_size).
   tracking:
     win_size: 5 # Feature tracking window size. If not using LK, must be odd.
     max_dropouts: 5 # Max number of missed detections before feature is killed.
