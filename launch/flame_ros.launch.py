@@ -113,7 +113,7 @@ def generate_launch_description():
         description="Should the node subscribe to sim time?",
     ))
 
-    # #} end of custom_config
+    # #} end of use_sim_time
 
     # #{ world_frame
 

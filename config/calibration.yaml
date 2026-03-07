@@ -1,8 +1,8 @@
 cam0:
   cam_overlaps: []
   camera_model: pinhole
-  distortion_coeffs: [-0.18034738512074053, 0.007138295377567081, 0.006783095225795607, -0.0020097316748678867]
+  distortion_coeffs: [0, 0, 0, 0]
   distortion_model: equidistant
-  intrinsics: [603.4253785964544, 604.5122569474232, 599.3120987871802, 371.39448770747913]
-  resolution: [1280, 800]
+  intrinsics: [400, 400, 400, 200]
+  resolution: [800, 400]
   rostopic: vio1_front/camera

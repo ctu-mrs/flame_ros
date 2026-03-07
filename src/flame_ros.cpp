@@ -240,9 +240,9 @@ private:
   std::string     live_frame_id_;
   int             width_  = 0;
   int             height_ = 0;
-  Eigen::Matrix3f K_; // Camera intrinsics.
+  Eigen::Matrix3f K_;         // Camera intrinsics.
   Eigen::Matrix3f K_resized_; // Camera intrinsics.
-  Eigen::VectorXf D_; // Distortion params: k1, k2, p1, p2, k3.
+  Eigen::VectorXf D_;         // Distortion params: k1, k2, p1, p2, k3.
 
   std::shared_ptr<image_transport::ImageTransport> image_transport_;
   image_transport::CameraSubscriber                cam_sub_;
@@ -327,7 +327,7 @@ void FlameRos::initialize() {
 
   image_transport_ = std::make_unique<image_transport::ImageTransport>(this_node_ptr());
 
-  mrs_lib::ParamLoader param_loader(this_node_ptr(), NODE_NAME);
+  mrs_lib::ParamLoader param_loader(node_, NODE_NAME);
 
   dynparam_mgr_ = std::make_shared<mrs_lib::DynparamMgr>(this_node_ptr(), mutex_drs_params_);
 
@@ -335,14 +335,22 @@ void FlameRos::initialize() {
   param_loader.loadParam("calibration_file", calibration_file);
 
   if (calibration_file != "") {
-    param_loader.addYamlFile(calibration_file);
+    if (!param_loader.addYamlFile(calibration_file)) {
+      RCLCPP_ERROR(node_->get_logger(), "failed to load calibration_file");
+      rclcpp::shutdown();
+      exit(1);
+    }
   }
 
   std::string custom_config;
   param_loader.loadParam("custom_config", custom_config);
 
   if (custom_config != "") {
-    param_loader.addYamlFile(custom_config);
+    if (!param_loader.addYamlFile(custom_config)) {
+      RCLCPP_ERROR(node_->get_logger(), "failed to load custom_config");
+      rclcpp::shutdown();
+      exit(1);
+    }
   }
 
   if (!param_loader.addYamlFileFromParam("default_config")) {
